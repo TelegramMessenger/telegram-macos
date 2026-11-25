@@ -229,7 +229,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                 return nil
             }
             var items:[ContextMenuItem] = []
-            for country in manager.list {
+            for country in manager.list where !country.hidden {
                 let item = ContextMenuItem(country.fullName, handler: { [weak self] in
                     self?.update(selected: country, update: true)
                 })
@@ -448,6 +448,10 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     
     public var readyValue: String {
         return self.codeText.stringValue + numberText.stringValue
+    }
+    
+    public var hasNumber: Bool {
+        return !numberText.stringValue.isEmpty
     }
     
     public var firstResponder: NSResponder? {

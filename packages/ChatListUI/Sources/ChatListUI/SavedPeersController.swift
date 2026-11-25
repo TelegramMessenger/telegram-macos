@@ -13,6 +13,7 @@ import GeneralRows
 import MessageUtils
 import InputDataUI
 import ShortPeerRow
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -174,6 +175,7 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
     }
     
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsScreen = .peerInfoMediaSavedChats
     controller.bar = .init(height: 0)
     let search = InputDataMediaSearchContext()
     
@@ -212,15 +214,9 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
         }, complete: { [weak controller] from, to in
             var items:[Int64] = []
 
-            var offset: Int = 0
-                       
             controller?.tableView.enumerateItems { item -> Bool in
                 guard let item = item as? ChatListRowItem else {
-                    offset += 1
                     return true
-                }
-                if item.isAd {
-                    offset += 1
                 }
                 switch item.pinnedType {
                 case .some, .last:
@@ -233,7 +229,6 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
                
                 return item.isFixedItem || item.groupId != .root
             }
-            items.move(at: from - offset, to: to - offset)
             let signal = context.engine.peers.setForumChannelPinnedTopics(id: context.peerId, threadIds: items) |> deliverOnMainQueue
             reorderDisposable.set(signal.start())
 
@@ -248,7 +243,7 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
         if state.request.isEmpty {
             return .single(.init(peers: nil, searchState: state))
         } else {
-            return context.engine.messages.searchLocalSavedMessagesPeers(query: state.request, indexNameMapping: [:])
+            return context.engine.messages.searchLocalSavedMessagesPeers(peerId: context.peerId, query: state.request, indexNameMapping: [:])
             |> map(Optional.init)
             |> map { .init(peers: $0, searchState: state) }
         }

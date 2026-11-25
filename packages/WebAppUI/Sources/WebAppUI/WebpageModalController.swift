@@ -28,6 +28,7 @@ import SystemPermissions
 import Svg
 import LocalAuthentication
 import InlineStickerLayer
+import AppAnalytics
 
 
 private func webAppOrigin(url: URL) -> String? {
@@ -252,6 +253,7 @@ public final class WebpageHeaderView : Control {
     
     private let titleView: TextView = TextView()
     private var statusView: PremiumStatusControl?
+    private var verificationView: PremiumStatusControl?
     
     private let subtitleView: TextView = TextView()
     private var leftButton: Control?
@@ -315,6 +317,14 @@ public final class WebpageHeaderView : Control {
         titleView.isSelectable = false
         
         
+        if let peer = bot, let control = PremiumStatusControl.control(peer, account: context.account, inlinePacksContext: context.inlinePacksContext, left: true, isSelected: false, cached: self.verificationView, animated: false) {
+            self.titleContainer.addSubview(control)
+            self.verificationView = control
+        } else if let view = self.verificationView {
+            performSubviewRemoval(view, animated: animated)
+            self.verificationView = nil
+        }
+
         if let peer = bot, let control = PremiumStatusControl.control(peer, account: context.account, inlinePacksContext: context.inlinePacksContext, left: false, isSelected: false, cached: self.statusView, animated: false) {
             
             self.titleContainer.addSubview(control)
@@ -399,24 +409,26 @@ public final class WebpageHeaderView : Control {
             leftButton.centerY(x: 20)
         }
         
-        titleView.resize(frame.width - 40 - additionalSize)
-        subtitleView.resize(frame.width - 40 - additionalSize)
-        
-        var titleSize: NSSize = titleView.frame.size
+        let availableWidth = max(0, frame.width - 40 - additionalSize)
+        let badgeWidth = WebAppTitleLayout.reservedWidth(verificationSize: verificationView?.frame.size, statusSize: statusView?.frame.size)
+        titleView.resize(max(1, availableWidth - badgeWidth))
+        subtitleView.resize(availableWidth)
 
-        
-        if let statusView {
-            titleSize.width += (statusView.frame.width + 2)
-        }
-        titleContainer.setFrameSize(titleSize)
+        let titleLayout = WebAppTitleLayout(titleSize: titleView.frame.size, verificationSize: verificationView?.frame.size, statusSize: statusView?.frame.size)
+        titleContainer.setFrameSize(titleLayout.size)
         
         let center = frame.midY
         titleContainer.centerX(y: center - titleContainer.frame.height - 1)
         subtitleView.centerX(y: center + 1)
         
         
-        titleView.centerY(x: 0)
-        statusView?.centerY(x: titleView.frame.maxX + 2)
+        titleView.frame = titleLayout.titleFrame
+        if let frame = titleLayout.verificationFrame {
+            verificationView?.frame = frame
+        }
+        if let frame = titleLayout.statusFrame {
+            statusView?.frame = frame
+        }
         
         
     }
@@ -1478,6 +1490,7 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
         }
         
         guard let window = self.window else {
+            completionHandler(nil)
             return
         }
         
@@ -1493,10 +1506,18 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
             return
         }
         
+        var completion: ((Bool) -> Void)? = completionHandler
+        let complete: (Bool) -> Void = { value in
+            let handler = completion
+            completion = nil
+            handler?(value)
+        }
         verifyAlert_button(for: window, header: requestData?.bot.displayTitle ?? appName, information: message, successHandler: { _ in
-            completionHandler(true)
+            complete(true)
         }, cancelHandler: {
-            completionHandler(false)
+            complete(false)
+        }, onDeinit: {
+            complete(false)
         })
     }
     
@@ -1516,10 +1537,16 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
     public func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping(WKPermissionDecision)->Void) {
         
         _ = self.context
+        var completion: ((WKPermissionDecision) -> Void)? = decisionHandler
+        let complete: (WKPermissionDecision) -> Void = { decision in
+            let handler = completion
+            completion = nil
+            handler?(decision)
+        }
         
         let request:(Peer)->Void = { [weak self] peer in
             if FastSettings.botAccessTo(type, peerId: peer.id) {
-                decisionHandler(.grant)
+                complete(.grant)
             } else {
                 let runConfirm:()->Void = {
                     let info: String
@@ -1535,11 +1562,15 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
                     }
                     if let window = self?.window {
                         verifyAlert_button(for: window, information: info, ok: strings().webAppAccessAllow, successHandler: { _ in
-                            decisionHandler(.grant)
+                            complete(.grant)
                             FastSettings.allowBotAccessTo(type, peerId: peer.id)
                         }, cancelHandler: {
-                            decisionHandler(.deny)
+                            complete(.deny)
+                        }, onDeinit: {
+                            complete(.deny)
                         })
+                    } else {
+                        complete(.deny)
                     }
                 }
                 switch type {
@@ -1548,7 +1579,7 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
                         if value {
                             runConfirm()
                         } else {
-                            decisionHandler(.deny)
+                            complete(.deny)
                         }
                     })
                 case .microphone:
@@ -1556,7 +1587,7 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
                         if value {
                             runConfirm()
                         } else {
-                            decisionHandler(.deny)
+                            complete(.deny)
                         }
                     })
                 case .cameraAndMicrophone:
@@ -1564,13 +1595,14 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
                         if audio && video {
                             runConfirm()
                         } else {
-                            decisionHandler(.deny)
+                            complete(.deny)
                         }
                     })
                 @unknown default:
                     if let window = self?.window {
                         alert(for: window, info: strings().unknownError)
                     }
+                    complete(.deny)
                 }
             }
         }
@@ -1578,20 +1610,19 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
         if let requestData = self.requestData {
             request(requestData.bot)
         } else {
-            return decisionHandler(.deny)
+            return complete(.deny)
         }
         
     }
     
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
-            switch BrowserHooks.shared.classifyLink(context, url.absoluteString) {
-            case .external, .shareUrl:
-                break
-            default:
-                self.close()
+            if self.bot != nil, url.absoluteString == "tg://resolve" {
+                return nil
             }
-            BrowserHooks.shared.openLink(context, url.absoluteString, self.window, true, {})
+            BrowserHooks.shared.openLink(context, url.absoluteString, self.window, true, { [weak self] in
+                self?.closeAnyway()
+            })
         }
         return nil
     }
@@ -1600,6 +1631,18 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
 
     
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if navigationAction.sourceFrame.isMainFrame, navigationAction.targetFrame?.isMainFrame == true,
+           let url = navigationAction.request.url {
+            if self.bot != nil, url.absoluteString == "tg://resolve" {
+                decisionHandler(.cancel)
+                return
+            }
+            if case .tonConnect = BrowserHooks.shared.classifyLink(context, url.absoluteString) {
+                decisionHandler(.cancel)
+                BrowserHooks.shared.openLink(context, url.absoluteString, self.window, true, {})
+                return
+            }
+        }
         if navigationAction.navigationType == .linkActivated {
             if let url = navigationAction.request.url {
                 if let currentUrl = URL(string: self.url) {
@@ -1879,7 +1922,9 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
                     }
                 }
                 if !alert.buttons.isEmpty {
+                    Analytics.shared.screens.showStandalone(.botMiniAppPopup, owner: alert)
                     alert.beginSheetModal(for: window, completionHandler: { [weak self] response in
+                        Analytics.shared.screens.hideStandalone(owner: alert)
                         let index = response.rawValue - 1000
                         if let id = buttons?[index]["id"] as? String {
                             self?.poupDidClose(id)
@@ -1938,7 +1983,8 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
             }
         case "web_app_open_invoice":
             if let slug = json?["slug"] as? String {
-                invoiceAction.open(context: context, slug: slug, window: window, canPresent: { [weak self] in
+                let origin = analyticsContext ?? Analytics.shared.unresolvedContext()
+                invoiceAction.open(context: context, slug: slug, window: window, analyticsContext: origin, canPresent: { [weak self] in
                     self?.window === window
                 }, completion: { [weak self] status in
                     let data: JSON = ["slug": slug, "status": status]
@@ -2184,7 +2230,8 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
             }
         case "web_app_send_prepared_message":
             if let id = json?["id"] as? String, let bot {
-                preparedShareAction.open(context: context, bot: bot, id: id, window: window, canPresent: { [weak self] in
+                let origin = analyticsContext ?? Analytics.shared.unresolvedContext()
+                preparedShareAction.open(context: context, bot: bot, id: id, window: window, analyticsContext: origin, canPresent: { [weak self] in
                     self?.window === window
                 }, completion: { [weak self] success in
                     self?.sendEvent(name: success ? "prepared_message_sent" : "prepared_message_failed", data: nil)
@@ -2226,7 +2273,8 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
                         self.sendEvent(name: "device_storage_failed", data: data.string)
                         return
                     }
-                    let _ = self.context.engine.peers.setBotStorageValue(peerId: botId, key: key, value: effectiveValue).start(error: { [weak self] error in
+                    let _ = (self.context.engine.peers.setBotStorageValue(peerId: botId, key: key, value: effectiveValue)
+                    |> deliverOnMainQueue).start(error: { [weak self] error in
                         var errorValue = "UNKNOWN_ERROR"
                         if case .quotaExceeded = error {
                             errorValue = "QUOTA_EXCEEDED"
@@ -2890,6 +2938,12 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
     }
     
     public func sendEvent(name: String, data: String?) {
+        if !Thread.isMainThread {
+            Queue.mainQueue().async { [weak self] in
+                self?.sendEvent(name: name, data: data)
+            }
+            return
+        }
         if self.requestData?.sameOrigin == true {
             guard let trustedOrigin = self.trustedOrigin, let currentUrl = self.genericView._holder.url, webAppOrigin(url: currentUrl) == trustedOrigin else {
                 return

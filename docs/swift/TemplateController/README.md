@@ -87,6 +87,7 @@ let controller = InputDataController(dataSignal: signal, title: strings().myScre
 
 - No code comments; new user-facing strings get a `//TODOLANG` marker until they are localized
 - Use `theme.colors` and `theme.icons`, never hardcoded colors or images
+- In a modal with a header, `InputDataController` draws a leading `.normal` section 10px tall instead of 20px; keep starting screens with `.sectionId(0, type: .normal)`
 - Public entry points take `any AccountContextProtocol`, not the app `AccountContext`
 
 ## Examples

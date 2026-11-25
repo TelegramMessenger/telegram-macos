@@ -14,31 +14,149 @@ import InputDataUI
 
 
 
-private final class SegmentContainerView : View {
-   fileprivate let segmentControl: ScrollableSegmentView
-   required init(frame frameRect: NSRect) {
-       self.segmentControl = ScrollableSegmentView(frame: NSMakeRect(0, 0, frameRect.width, 50))
-       super.init(frame: frameRect)
-       addSubview(segmentControl)
-       updateLocalizationAndTheme(theme: theme)
-       
-   }
-   
-   override func layout() {
-       super.layout()
-       
-       segmentControl.frame = bounds
-       segmentControl.center()
-   }
-   
-   override func updateLocalizationAndTheme(theme: PresentationTheme) {
-       segmentControl.theme = ScrollableSegmentTheme.standard(theme.colors)
-       backgroundColor = .clear
-   }
-   
-   required init?(coder: NSCoder) {
-       fatalError("init(coder:) has not been implemented")
-   }
+final class SegmentContainerView : View {
+    static let height: CGFloat = 56
+    private let scrollView = HorizontalScrollView(frame: .zero)
+    private let documentView = View()
+    private let segmentControl = GlassSegmentView(frame: .zero)
+    private var collections: [StorageUsageCollection] = []
+    private var selected: StorageUsageCollection?
+    private var accessibilityTabs: [StorageUsageCollection: StorageTabAccessibilityElement] = [:]
+    var didSelect: ((StorageUsageCollection) -> Void)?
+
+    required init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.verticalScrollElasticity = .none
+        scrollView.horizontalScrollElasticity = .automatic
+        scrollView.documentView = documentView
+        scrollView.backgroundColor = .clear
+        scrollView.layer?.backgroundColor = NSColor.clear.cgColor
+        documentView.layer?.masksToBounds = false
+        documentView.addSubview(segmentControl)
+        addSubview(scrollView)
+        segmentControl.didSelect = { [weak self] index in
+            guard let self, self.collections.indices.contains(index) else {
+                return
+            }
+            self.select(self.collections[index])
+        }
+        updateLocalizationAndTheme(theme: theme)
+    }
+
+    func update(collections: [StorageUsageCollection], selected: StorageUsageCollection?, animated: Bool) {
+        self.collections = collections
+        self.selected = selected
+        segmentControl.set(titles: collections.map { $0.title }, selected: selected.flatMap { collections.firstIndex(of: $0) }, animated: animated)
+        accessibilityTabs = accessibilityTabs.filter { collections.contains($0.key) }
+        layout()
+        revealSelection()
+    }
+
+    func contains(_ collection: StorageUsageCollection?) -> Bool {
+        return collection.map { collections.contains($0) } ?? false
+    }
+
+    fileprivate func select(_ collection: StorageUsageCollection) {
+        guard collections.contains(collection) else {
+            return
+        }
+        selected = collection
+        revealSelection()
+        didSelect?(collection)
+    }
+
+    private func revealSelection() {
+        guard let selected, let index = collections.firstIndex(of: selected) else {
+            return
+        }
+        let labels = segmentControl.subviews.compactMap { $0 as? TextView }
+        guard labels.indices.contains(index) else {
+            return
+        }
+        let rect = segmentControl.convert(labels[index].frame.insetBy(dx: -16, dy: -8), to: documentView)
+        documentView.scrollToVisible(rect)
+    }
+
+    override func layout() {
+        super.layout()
+        scrollView.frame = bounds
+        let size = segmentControl.contentSize
+        documentView.frame = NSMakeRect(0, 0, max(bounds.width, size.width + 16), bounds.height)
+        segmentControl.frame = NSMakeRect(max(8, floorToScreenPixels((bounds.width - size.width) / 2)), (bounds.height - size.height) / 2, size.width, size.height)
+    }
+
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        segmentControl.updateLocalizationAndTheme(theme: theme)
+        segmentControl.set(titles: collections.map { $0.title }, selected: selected.flatMap { collections.firstIndex(of: $0) }, animated: false)
+        backgroundColor = .clear
+        needsLayout = true
+    }
+
+    override func isAccessibilityElement() -> Bool {
+        return false
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        guard TGUIKitAccessibility.isEnabled else {
+            return super.accessibilityChildren()
+        }
+        return collections.map { collection in
+            let element = accessibilityTabs[collection] ?? StorageTabAccessibilityElement()
+            element.owner = self
+            element.collection = collection
+            element.setAccessibilityParent(self)
+            element.setAccessibilityRole(.radioButton)
+            element.setAccessibilityLabel(collection.title)
+            element.setAccessibilityEnabled(true)
+            accessibilityTabs[collection] = element
+            return element
+        }
+    }
+
+    fileprivate func accessibilityFrame(for collection: StorageUsageCollection) -> NSRect {
+        let labels = segmentControl.subviews.compactMap { $0 as? TextView }
+        guard let index = collections.firstIndex(of: collection), labels.indices.contains(index) else {
+            return .zero
+        }
+        let rect = segmentControl.convert(labels[index].frame.insetBy(dx: -12, dy: 0), to: self)
+        return NSAccessibility.screenRect(fromView: self, rect: NSMakeRect(rect.minX, 8, rect.width, GlassSegmentView.height))
+    }
+
+    fileprivate func isSelected(_ collection: StorageUsageCollection) -> Bool {
+        return selected == collection
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+private final class StorageTabAccessibilityElement: NSAccessibilityElement {
+    weak var owner: SegmentContainerView?
+    var collection: StorageUsageCollection = .peers
+
+    override func isAccessibilityElement() -> Bool {
+        return true
+    }
+
+    override func accessibilityFrame() -> NSRect {
+        return owner?.accessibilityFrame(for: collection) ?? .zero
+    }
+
+    override func isAccessibilitySelected() -> Bool {
+        return owner?.isSelected(collection) ?? false
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard let owner else {
+            return false
+        }
+        owner.select(collection)
+        return true
+    }
 }
 
 private enum AnimationDirection {
@@ -55,12 +173,14 @@ final class StorageUsageMediaContainerView : View {
        view = StorageUsageBlockControllerView(frame: NSMakeRect(0, sectionOffset, min(600, frameRect.width - sectionOffset * 2), frameRect.height - sectionOffset))
        super.init(frame: frameRect)
        addSubview(view)
-       backgroundColor = theme.colors.listBackground
+       backgroundColor = .clear
+       layer?.isOpaque = false
        layout()
    }
    override func updateLocalizationAndTheme(theme: PresentationTheme) {
        super.updateLocalizationAndTheme(theme: theme)
-       backgroundColor = theme.colors.listBackground
+       backgroundColor = .clear
+       layer?.isOpaque = false
    }
    
    override func scrollWheel(with event: NSEvent) {
@@ -118,12 +238,10 @@ final class StorageUsageMediaContainerView : View {
 
 class StorageUsageBlockControllerView : View {
    
-   private let topPanelView = GeneralRowContainerView(frame: .zero)
+   private let contentContainerView = GeneralRowContainerView(frame: .zero)
    fileprivate let segmentPanelView: SegmentContainerView
    
    private(set) weak var mainView:NSView?
-   
-   private let topPanelSeparatorView = View()
    
    override func scrollWheel(with event: NSEvent) {
        mainTable?.scrollWheel(with: event)
@@ -143,20 +261,20 @@ class StorageUsageBlockControllerView : View {
    fileprivate var isSelectionState:Bool = false
    private var chatInteraction:StorageUsageChatInteraction?
    required init(frame frameRect:NSRect) {
-       segmentPanelView = SegmentContainerView(frame: NSMakeRect(0, 0, frameRect.width, 40))
+       segmentPanelView = SegmentContainerView(frame: NSMakeRect(0, 0, frameRect.width, SegmentContainerView.height))
        super.init(frame: frameRect)
-       addSubview(topPanelView)
-       topPanelView.addSubview(topPanelSeparatorView)
-       topPanelView.addSubview(segmentPanelView)
+       addSubview(contentContainerView)
+       addSubview(segmentPanelView)
        updateLocalizationAndTheme(theme: theme)
        layout()
    }
    
    override func updateLocalizationAndTheme(theme: PresentationTheme) {
-      // super.updateLocalizationAndTheme(theme: theme)
-       backgroundColor = theme.colors.listBackground
-       topPanelView.backgroundColor = theme.colors.background
-       topPanelSeparatorView.backgroundColor = theme.colors.border
+       backgroundColor = .clear
+       layer?.isOpaque = false
+       contentContainerView.backgroundColor = .clear
+       contentContainerView.layer?.isOpaque = false
+       segmentPanelView.updateLocalizationAndTheme(theme: theme)
    }
    
    func updateInteraction(_ chatInteraction:StorageUsageChatInteraction) {
@@ -165,12 +283,12 @@ class StorageUsageBlockControllerView : View {
    
    func updateCorners(_ corners: GeneralViewItemCorners, animated: Bool) {
        self.corners = corners
-       self.topPanelView.setCorners(corners, animated: animated)
-       topPanelSeparatorView.isHidden = corners == .all
+       self.contentContainerView.setCorners(corners, animated: animated)
    }
    
    fileprivate func updateMainView(with view:NSView, animated:AnimationDirection?) {
-       addSubview(view, positioned: .below, relativeTo: topPanelView)
+       view.frame = contentContainerView.bounds
+       contentContainerView.addSubview(view)
        
        let timingFunction: CAMediaTimingFunctionName = .spring
        let duration: TimeInterval = 0.35
@@ -212,13 +330,12 @@ class StorageUsageBlockControllerView : View {
    
    override func layout() {
        
+       super.layout()
        let inset:CGFloat = isSelectionState ? 40 : 0
-       topPanelView.frame = NSMakeRect(0, 0, frame.width, 40)
-       topPanelView.setCorners(self.corners)
-       topPanelSeparatorView.frame = NSMakeRect(0, topPanelView.frame.height - .borderSize, topPanelView.frame.width, .borderSize)
-       
-       segmentPanelView.frame = NSMakeRect(0, 0, topPanelView.frame.width, 40)
-       mainView?.frame = NSMakeRect(0, topPanelView.isHidden ? 0 : topPanelView.frame.height, frame.width, frame.height - inset - (topPanelView.isHidden ? 0 : topPanelView.frame.height))
+       segmentPanelView.frame = NSMakeRect(0, 0, frame.width, SegmentContainerView.height)
+       contentContainerView.frame = NSMakeRect(0, segmentPanelView.frame.maxY, frame.width, max(0, frame.height - inset - segmentPanelView.frame.maxY))
+       contentContainerView.setCorners(self.corners)
+       mainView?.frame = contentContainerView.bounds
        
 
    }
@@ -255,7 +372,9 @@ enum StorageUsageCollection : Int32 {
 
 
 
-class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGenericViewController<StorageUsageMediaContainerView, Context> {
+class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGenericViewController<StorageUsageMediaContainerView, Context>, StorageUsageBlockControlling {
+    var mediaView: View { genericView }
+    var mainTable: TableView? { genericView.mainTable }
    
     
     private let members: ViewController
@@ -394,8 +513,7 @@ class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGene
        
        self.ready.set(ready)
        
-       genericView.segmentPanelView.segmentControl.didChangeSelectedItem = { [weak self] item in
-           let newMode = StorageUsageCollection(rawValue: Int32(item.uniqueId))!
+       genericView.segmentPanelView.didSelect = { [weak self] newMode in
            
            if newMode == self?.mode, let mainTable = self?.genericView.mainTable {
                self?.currentMainTableView?(mainTable, true, true)
@@ -413,14 +531,7 @@ class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGene
            guard let `self` = self else {
                return
            }
-           var items:[ScrollableSegmentItem] = []
-           let insets = NSEdgeInsets(left: 10, right: 10, bottom: 2)
-           let segmentTheme = ScrollableSegmentTheme(background: .clear, border: .clear, selector: theme.colors.accent, inactiveText: theme.colors.grayText, activeText: theme.colors.accent, textFont: .normal(.title))
-           
-           for (i, tab) in state.segments.enumerated() {
-               items.append(ScrollableSegmentItem(title: tab.title, index: i, uniqueId: Int64(tab.rawValue), selected: state.effectiveCollection == tab, insets: insets, icon: nil, theme: segmentTheme, equatable: nil))
-           }
-           self.genericView.segmentPanelView.segmentControl.updateItems(items, animated: !first)
+           self.genericView.segmentPanelView.update(collections: state.segments, selected: state.effectiveCollection, animated: !first)
            
            if let collection = state.effectiveCollection {
                self.toggle(with: collection, animated: !first)
@@ -451,7 +562,6 @@ class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGene
        self.currentController = controller
        controller.viewWillAppear(animated)
        previous?.viewWillDisappear(animated)
-       controller.view.frame = self.genericView.view.bounds
        let animation: AnimationDirection?
        
        if animated, let oldMode = oldMode {
@@ -476,7 +586,7 @@ class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGene
            self?.genericView.updateCorners(filter.isEmpty ? .all : [.topLeft, .topRight], animated: !firstUpdate)
            firstUpdate = false
        }
-       self.currentMainTableView?(genericView.mainTable, animated, previous != controller && genericView.segmentPanelView.segmentControl.contains(oldMode?.rawValue ?? -3))
+       self.currentMainTableView?(genericView.mainTable, animated, previous != controller && genericView.segmentPanelView.contains(oldMode))
        
    }
    

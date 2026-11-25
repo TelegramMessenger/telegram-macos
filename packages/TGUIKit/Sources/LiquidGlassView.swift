@@ -40,6 +40,38 @@ public final class AdaptiveGlassEffectView: NSGlassEffectView {
         onAppearanceChange?(self.effectiveAppearance)
     }
 
+    private var deferredLayout = false
+
+    public override func layout() {
+        if isHiddenOrHasHiddenAncestor {
+            deferredLayout = true
+            return
+        }
+        deferredLayout = false
+        super.layout()
+    }
+
+    public override func viewDidUnhide() {
+        super.viewDidUnhide()
+        if deferredLayout {
+            needsLayout = true
+        }
+    }
+
+    public override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if deferredLayout {
+            needsLayout = true
+        }
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if deferredLayout {
+            needsLayout = true
+        }
+    }
+
     private static let adaptiveSelector = Selector(("set_adaptiveAppearance:"))
 
 #if compiler(>=6.4)
@@ -183,6 +215,7 @@ open class LiquidGlassView: View {
     /// FULL frame (parent coords) — so we only animate the inner views
     /// here when they are still our subviews.
     public func setAnimatorFrame(_ frame: NSRect) {
+        updateCornerRadius(size: frame.size)
         let sizeChanged = validLayout != frame.size
 
         self.animator().frame = frame

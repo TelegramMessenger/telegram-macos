@@ -16,6 +16,7 @@ import AlertsUI
 import InAppSettings
 import ShortPeerRow
 import StatisticsUI
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -124,6 +125,7 @@ public func MessagePollStatsController(context: any AccountContextProtocol, mess
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().messagePollStatsTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .chatPollStats
     controller.contextObject = statsContext
     controller.didLoad = { controller, _ in
         controller.tableView.alwaysOpenRowsOnMouseUp = true

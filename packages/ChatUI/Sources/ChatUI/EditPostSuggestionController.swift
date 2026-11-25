@@ -16,6 +16,7 @@ import LocalAnimations
 import ChatHistoryModel
 import StarsUI
 import InlineStickerLayer
+import AppAnalytics
 
 private final class SegmentItem : GeneralRowItem {
     fileprivate let currency: CurrencyAmount.Currency
@@ -750,6 +751,7 @@ public func EditPostSuggestionController(chatInteraction: ChatInteraction, data:
     
 
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .chatSuggestedPostEditor
     
     controller.validateData = { [weak chatInteraction] _ in
         

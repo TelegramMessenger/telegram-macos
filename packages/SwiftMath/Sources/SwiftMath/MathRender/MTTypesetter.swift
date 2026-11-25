@@ -1006,7 +1006,13 @@ class MTTypesetter {
         return glyphs[numVariants - 1]
     }
     
-    func constructGlyph(_ glyph:CGGlyph, withHeight glyphHeight:CGFloat) -> MTGlyphConstructionDisplay? {
+    static let maximumConstructedGlyphHeightInEms = CGFloat(64)
+
+    func constructGlyph(_ glyph:CGGlyph, withHeight requestedGlyphHeight:CGFloat) -> MTGlyphConstructionDisplay? {
+        guard requestedGlyphHeight.isFinite else {
+            return nil
+        }
+        let glyphHeight = min(requestedGlyphHeight, styleFont.fontSize * MTTypesetter.maximumConstructedGlyphHeightInEms)
         let parts = styleFont.mathTable!.getVerticalGlyphAssembly(forGlyph: glyph)
         if parts.count == 0 {
             return nil
@@ -1216,6 +1222,7 @@ class MTTypesetter {
         assert(inner!.leftBoundary != nil || inner!.rightBoundary != nil, "Inner should have a boundary to call this function");
 
         let glyphHeight: CGFloat
+        var innerListDisplay: MTMathListDisplay? = nil
 
         // Check if we have an explicit delimiter height (from \big, \Big, etc.)
         if let delimiterMultiplier = inner!.delimiterHeight {
@@ -1224,7 +1231,7 @@ class MTTypesetter {
             glyphHeight = styleFont.fontSize * delimiterMultiplier
         } else {
             // Calculate height based on inner content (for \left...\right)
-            let innerListDisplay = MTTypesetter.createLineForMathList(inner!.innerList, font:font, style:style, cramped:cramped, spaced:true, maxWidth:maxWidth)
+            innerListDisplay = MTTypesetter.createLineForMathList(inner!.innerList, font:font, style:style, cramped:cramped, spaced:true, maxWidth:maxWidth)
             let axisHeight = styleFont.mathTable!.axisHeight
             // delta is the max distance from the axis
             let delta = max(innerListDisplay!.ascent - axisHeight, innerListDisplay!.descent + axisHeight);
@@ -1253,11 +1260,10 @@ class MTTypesetter {
 
         // Only include inner content if not using explicit delimiter height
         // (explicit height commands like \big produce standalone delimiters)
-        if inner!.delimiterHeight == nil {
-            let innerListDisplay = MTTypesetter.createLineForMathList(inner!.innerList, font:font, style:style, cramped:cramped, spaced:true, maxWidth:maxWidth)
-            innerListDisplay!.position = position;
-            position.x += innerListDisplay!.width;
-            innerElements.append(innerListDisplay!)
+        if let innerListDisplay = innerListDisplay {
+            innerListDisplay.position = position;
+            position.x += innerListDisplay.width;
+            innerElements.append(innerListDisplay)
         }
 
         if inner!.rightBoundary != nil && !inner!.rightBoundary!.nucleus.isEmpty {

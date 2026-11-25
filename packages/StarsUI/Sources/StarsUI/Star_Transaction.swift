@@ -32,6 +32,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 extension StarGift.UniqueGift {
     public func link(_ context: (any AccountContextProtocol)) -> String {
@@ -1983,20 +1984,26 @@ public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPe
             })
         }
     }, transferUnqiue: { gift in
+        let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: getController?()?.analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         
         let state = stateValue.with { $0 }
         
         if let reference, case let .starGift(_, _, _, _, _, _, _, _, _, _, transferStars, canExportDate, _, _, _, _, _, _, _, _, _, _, _, _) = purpose {
             
             
-            showGiftTransfer(context: context, window: window, gift: gift, reference: reference, giftsContext: profileContext ?? ProfileGiftsContext(account: context.account, peerId: context.peerId), canExportDate: canExportDate, transferStars: transferStars, transfer: { peer, dismiss in
+            showGiftTransfer(context: context, window: window, analyticsContext: analyticsContext, gift: gift, reference: reference, giftsContext: profileContext ?? ProfileGiftsContext(account: context.account, peerId: context.peerId), canExportDate: canExportDate, transferStars: transferStars, transfer: { peer, dismiss in
+                let transferContext = analyticsContext.restricting(peerId: peer.id)
+                let presentation = transferContext.beginPresentation()
+                defer { withExtendedLifetime(presentation) {} }
                 if let convertStars = transferStars, let starsState = state.starsState, starsState.balance.value < convertStars {
-                    FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, window, .stars, nil, convertStars)
+                    FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, window, .stars, nil, convertStars, transferContext)
                     return
                 }
                 dismiss()
-                _ = (context.engine.payments.transferStarGift(prepaid: true, reference: reference, peerId: peer.id)).startStandalone()
-                _ = (showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
+                _ = transferContext.preservingPresentation(context.engine.payments.transferStarGift(prepaid: true, reference: reference, peerId: peer.id)).startStandalone()
+                _ = transferContext.preservingPresentation(showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
                 close?()
             })
         }
@@ -2056,6 +2063,15 @@ public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPe
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    switch purpose {
+    case .starGift:
+        controller.analyticsScreen = AnalyticsScreen.giftsGift
+    case .unavailableGift:
+        controller.analyticsScreen = AnalyticsScreen.giftsSoldOut
+    default:
+        controller.analyticsScreen = AnalyticsScreen.starsTransaction
+    }
+    
     getController = { [weak controller] in
         return controller
     }

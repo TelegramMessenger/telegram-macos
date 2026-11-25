@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -21,6 +22,7 @@ public protocol ChatListPeerInfoController: ViewController {
 }
 
 public protocol ChatListChatController: ViewController {
+    func inheritAnalyticsContext(_ context: AnalyticsContext)
     var chatLocation: ChatLocation { get }
     var chatInteraction: ChatInteraction { get }
 }
@@ -91,16 +93,20 @@ public struct ChatListUIHooks {
     public let makeTabAllBadgeNode: (any AccountContextProtocol) -> Node
     public let makeSearchAdAboutController: (any AccountContextProtocol) -> ModalViewController
     public let navigateToChatWithCallback: (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatMode, ChatFocusTarget?, ChatInitialAction?, Atomic<ChatLocationContextHolder?>?, Bool, ViewControllerStyle?, @escaping (ViewController) -> Void) -> Void
-    public var navigateToChatWithContext: ((NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatMode, ChatFocusTarget?, ChatInitialAction?, Atomic<ChatLocationContextHolder?>?, Bool, ViewControllerStyle?, @escaping (ViewController) -> Void) -> Void)?
+    public var navigateToChatWithContext: ((NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatMode, ChatFocusTarget?, ChatInitialAction?, Atomic<ChatLocationContextHolder?>?, Bool, ViewControllerStyle?, AnalyticsContext, @escaping (ViewController) -> Void) -> Void)?
 
-    public func navigateToChatObserved(_ navigation: NavigationViewController?, _ context: any AccountContextProtocol, _ chatLocation: ChatLocation, _ mode: ChatMode, _ focusTarget: ChatFocusTarget?, _ initialAction: ChatInitialAction?, _ holder: Atomic<ChatLocationContextHolder?>?, _ additional: Bool, _ style: ViewControllerStyle?, callback: @escaping (ViewController) -> Void) {
+    public func navigateToChatObserved(_ navigation: NavigationViewController?, _ context: any AccountContextProtocol, _ chatLocation: ChatLocation, _ mode: ChatMode, _ focusTarget: ChatFocusTarget?, _ initialAction: ChatInitialAction?, _ holder: Atomic<ChatLocationContextHolder?>?, _ additional: Bool, _ style: ViewControllerStyle?, analyticsContext: AnalyticsContext?, callback: @escaping (ViewController) -> Void) {
+        let origin = ForumNavigationOrigin(context: context, peerId: chatLocation.peerId, inherited: analyticsContext)
+        let presentation = origin.context?.beginPresentation()
+        defer { presentation?.end() }
         let completed: (ViewController) -> Void = { controller in
-            do {
+            origin.perform {
+                origin.bind(controller)
                 callback(controller)
             }
         }
-        if let navigateToChatWithContext {
-            navigateToChatWithContext(navigation, context, chatLocation, mode, focusTarget, initialAction, holder, additional, style, completed)
+        if let analyticsContext = origin.context, let navigateToChatWithContext {
+            navigateToChatWithContext(navigation, context, chatLocation, mode, focusTarget, initialAction, holder, additional, style, analyticsContext, completed)
         } else {
             navigateToChatWithCallback(navigation, context, chatLocation, mode, focusTarget, initialAction, holder, additional, style, completed)
         }
@@ -112,6 +118,7 @@ public struct ChatListUIHooks {
     public let makeEditForumTopicController: (any AccountContextProtocol, PeerId, MessageHistoryThreadData, Int64) -> ViewController
     public let formatPhoneNumber: (any AccountContextProtocol, String) -> String
     public let crashReportCard: (any AccountContextProtocol) -> Signal<ChatListCrashReportCard?, NoError>
+    public let openDemoAccount: (any AccountContextProtocol, AccountRecordId) -> Void
 
     public init(makeShareLinkModal: @escaping (any AccountContextProtocol, String) -> ModalViewController,
                 pushPeerInfo: @escaping (NavigationViewController, any AccountContextProtocol, PeerId) -> Void,
@@ -156,7 +163,9 @@ public struct ChatListUIHooks {
                 makeCreateForumTopicController: @escaping (any AccountContextProtocol, PeerId) -> ViewController,
                 makeEditForumTopicController: @escaping (any AccountContextProtocol, PeerId, MessageHistoryThreadData, Int64) -> ViewController,
                 formatPhoneNumber: @escaping (any AccountContextProtocol, String) -> String,
-                crashReportCard: @escaping (any AccountContextProtocol) -> Signal<ChatListCrashReportCard?, NoError>) {
+                crashReportCard: @escaping (any AccountContextProtocol) -> Signal<ChatListCrashReportCard?, NoError>,
+                openDemoAccount: @escaping (any AccountContextProtocol, AccountRecordId) -> Void = { _, _ in }) {
+        self.openDemoAccount = openDemoAccount
         self.makeShareLinkModal = makeShareLinkModal
         self.pushPeerInfo = pushPeerInfo
         self.makePremiumStatusController = makePremiumStatusController

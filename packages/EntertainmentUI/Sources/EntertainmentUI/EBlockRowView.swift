@@ -180,8 +180,16 @@ public class EBlockRowView: TableRowView {
         self.currentDownItem = nil
     }
     
-    public var emojiUnderMouse: String? {
-        return itemUnderMouse?.1.string
+    func emoji(at point: NSPoint) -> NSAttributedString? {
+        let point = content.convert(point, from: self)
+        guard content.bounds.contains(point), let item = item as? EBlockItem, let key = lines.first(where: { $0.value.frame.contains(point) })?.key else {
+            return nil
+        }
+        let symbols = item.lineAttr.flatMap { $0 }
+        guard symbols.indices.contains(key.index) else {
+            return nil
+        }
+        return symbols[key.index]
     }
     
     private var itemUnderMouse: (LineLayer, NSAttributedString)? {

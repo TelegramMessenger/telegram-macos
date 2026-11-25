@@ -5,18 +5,23 @@ import ColorPalette
 
 public class SearchTextField: BaseTextView {
 
-    
+    private let writingDirectionAlignment = WritingDirectionAlignmentDelegate()
+    private let writingDirectionSelection = WritingDirectionSelection()
+
     public init() {
         super.init(frame: .zero)
         self.translatesAutoresizingMaskIntoConstraints = false
         self.autoresizingMask = []
         self.autoresizesSubviews = false
         textContainer?.maximumNumberOfLines = 1
-        
+        textStorage?.delegate = writingDirectionAlignment
+        writingDirectionSelection.attach(to: self)
     }
     public override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
         super.init(frame: frameRect, textContainer: container)
         textContainer?.maximumNumberOfLines = 1
+        textStorage?.delegate = writingDirectionAlignment
+        writingDirectionSelection.attach(to: self)
     }
     
     
@@ -680,7 +685,9 @@ open class SearchView: OverlayControl, NSTextViewDelegate {
             progressIndicator.removeFromSuperview()
             progressIndicator.isHidden = true
             clear.isHidden = self.state == .None || !clearVisibility
-            rightAccessory.isHidden = self.state == .None
+            if rightAccessory !== clear {
+                rightAccessory.isHidden = self.state == .None
+            }
         }
         if window?.firstResponder == input {
             window?.makeFirstResponder(input)

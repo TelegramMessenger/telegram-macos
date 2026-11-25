@@ -337,7 +337,12 @@ final class ChatLayerTextNode: ChatLayerNode {
     }
 
     private func copyBlockQuote(at index: Int) {
-        guard let layout = textLayout, layout.blockQuotes.indices.contains(index), let text = layout.blockQuoteText(startingWith: layout.blockQuotes[index].range) else { return }
+        guard let layout = textLayout else { return }
+        guard layout.mayItems else {
+            _ = layout.interactions.copy?()
+            return
+        }
+        guard layout.blockQuotes.indices.contains(index), let text = layout.blockQuoteText(startingWith: layout.blockQuotes[index].range) else { return }
         if let copy = layout.interactions.copyToClipboard { _ = copy(text) }
         else {
             NSPasteboard.general.clearContents()
@@ -604,7 +609,7 @@ final class ChatLayerTextNode: ChatLayerNode {
             suppressTextClick = suppressTextClick || layout.selectedRange.hasSelectText
             clearExternalSelection()
             let index = layout.findIndex(location: event.location)
-            guard onTextClick != nil || (index >= 0 && (event.location.x <= layout.lines[index].frame.maxX || !isSelectable)) else { return false }
+            guard onTextClick != nil || (index >= 0 && (!layout.isOutsideText(event.location, line: index) || !isSelectable)) else { return false }
             let formattedDate = hasFormattedDates ? layout.formattedDate(at: event.location)?.0 : nil
             guard isSelectable || onTextClick != nil || formattedDate != nil || layout.link(at: event.location) != nil else { return false }
             selectionStart = event.location
@@ -733,7 +738,10 @@ final class ChatLayerTextNode: ChatLayerNode {
             return true
         }
         if command == #selector(ChatLayerSceneView.copy(_:)) {
-            guard layout.mayItems else { return false }
+            guard layout.mayItems else {
+                _ = layout.interactions.copy?()
+                return true
+            }
             if layout.interactions.copy?() == true { return true }
             let range = layout.selectedRange.range
             guard range.location != NSNotFound, range.length > 0, range.location <= layout.attributedString.length, range.length <= layout.attributedString.length - range.location else { return false }
@@ -773,7 +781,7 @@ final class ChatLayerTextNode: ChatLayerNode {
         let cancelledVersion = previousState?.cancel()
         guard menuState === previousState, previousState?.version == cancelledVersion else { return true }
         if let layout = textLayout, let scene, !scene.isHiddenOrHasHiddenAncestor, isVisible, isEffectivelyEnabled, layout.mayItems, layer.bounds.contains(location) {
-            if !layout.selectedRange.hasSelectText && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
+            if (!layout.selectedRange.hasSelectText || layout.selectedRange.range.length == 0) && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
                 layout.selectWord(at: location)
             }
             self.selectionChanged()

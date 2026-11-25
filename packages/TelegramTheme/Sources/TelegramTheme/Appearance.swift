@@ -2171,7 +2171,7 @@ public func generateIcons(from palette: ColorPalette, bubbled: Bool) -> Telegram
 }
 
 
-public func generateTheme(palette: ColorPalette, cloudTheme: TelegramTheme?, bubbled: Bool, fontSize: CGFloat, wallpaper: ThemeWallpaper, backgroundSize: NSSize = NSMakeSize(1040, 1580), liquidGlass: Bool = System.liquidGlass) -> TelegramPresentationTheme {
+public func generateTheme(palette: ColorPalette, cloudTheme: TelegramTheme?, bubbled: Bool, fontSize: CGFloat, wallpaper: ThemeWallpaper, backgroundSize: NSSize = NSMakeSize(1040, 1580), liquidGlass: Bool = System.liquidGlass, scaleFactor: CGFloat = System.backingScale) -> TelegramPresentationTheme {
     
     let chatList = TelegramChatListTheme(selectedBackgroundColor: palette.accentSelect,
                                          singleLayoutSelectedBackgroundColor: palette.grayBackground,
@@ -2194,43 +2194,43 @@ public func generateTheme(palette: ColorPalette, cloudTheme: TelegramTheme?, bub
                                          badgeMutedBackgroundColor: palette.badgeMuted)
     
     let tabBar = TelegramTabBarTheme(color: palette.grayIcon, selectedColor: palette.accentIcon, badgeTextColor: .white, badgeColor: palette.redUI)
-    return TelegramPresentationTheme(colors: palette, cloudTheme: cloudTheme, search: SearchTheme(palette.grayBackground, TelegramThemeHooks.shared.image(.iconSearchField).precomposed(palette.grayIcon), TelegramThemeHooks.shared.image(.iconSearchClear).precomposed(palette.grayIcon), { strings().searchFieldSearch }, palette.text, palette.grayText), chatList: chatList, tabBar: tabBar, icons: generateIcons(from: palette, bubbled: bubbled), bubbled: bubbled, fontSize: fontSize, wallpaper: wallpaper, generated: true, backgroundSize: backgroundSize, liquidGlass: liquidGlass)
+    return TelegramPresentationTheme(colors: palette, cloudTheme: cloudTheme, search: SearchTheme(palette.grayBackground, TelegramThemeHooks.shared.image(.iconSearchField).precomposed(palette.grayIcon), TelegramThemeHooks.shared.image(.iconSearchClear).precomposed(palette.grayIcon), { strings().searchFieldSearch }, palette.text, palette.grayText), chatList: chatList, tabBar: tabBar, icons: generateIcons(from: palette, bubbled: bubbled), bubbled: bubbled, fontSize: fontSize, wallpaper: wallpaper, generated: true, backgroundSize: backgroundSize, liquidGlass: liquidGlass, scaleFactor: scaleFactor)
 }
 
 
-public func updateTheme(with settings: ThemePaletteSettings, for window: Window? = nil, animated: Bool = false) -> TelegramPresentationTheme {
+public func updateTheme(with settings: ThemePaletteSettings, for window: Window? = nil, animated: Bool = false, resolvedSystemPalette: ColorPalette? = nil, scaleFactor: CGFloat = System.backingScale) -> TelegramPresentationTheme {
     let palette: ColorPalette
     switch settings.palette.name {
     case whitePalette.name:
-        if settings.palette.accent == whitePalette.accent {
+        if settings.palette == whitePalette {
             palette = whitePalette
         } else {
             palette = settings.palette
         }
     case darkPalette.name:
-        if settings.palette.accent == darkPalette.accent {
+        if settings.palette == darkPalette {
             palette = darkPalette
         } else {
             palette = settings.palette
         }
     case dayClassicPalette.name:
-        if settings.palette.accent == dayClassicPalette.accent {
+        if settings.palette == dayClassicPalette {
             palette = dayClassicPalette
         } else {
             palette = settings.palette
         }
     case nightAccentPalette.name:
-        if settings.palette.accent == nightAccentPalette.accent {
+        if settings.palette == nightAccentPalette {
             palette = nightAccentPalette
         } else {
             palette = settings.palette
         }
     case systemPalette.name:
-        palette = systemPalette
+        palette = resolvedSystemPalette ?? systemPalette.withUpdatedName(systemPalette.name)
     default:
         palette = settings.palette
     }
-    let theme = generateTheme(palette: palette, cloudTheme: settings.cloudTheme, bubbled: settings.bubbled, fontSize: settings.fontSize, wallpaper: settings.wallpaper)
+    let theme = generateTheme(palette: palette, cloudTheme: settings.cloudTheme, bubbled: settings.bubbled, fontSize: settings.fontSize, wallpaper: settings.wallpaper, scaleFactor: scaleFactor)
     return theme
 }
 

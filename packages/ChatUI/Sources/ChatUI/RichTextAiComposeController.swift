@@ -20,6 +20,7 @@ import AlertsUI
 import GeneralRows
 import InputDataUI
 import InstantPageUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -161,18 +162,29 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
 /// prompt is sent as a single-use tone with no text — the server generates a rich message from scratch.
 /// After "Generate" the result is previewed in place (rendered via InstantPage V2) and the primary button
 /// becomes "Add to Page", which commits it to the editor.
-public func RichTextAiComposeController(context: any AccountContextProtocol, completion: @escaping (InstantPage) -> Void) -> InputDataModalController {
+public func RichTextAiComposeController(context: any AccountContextProtocol, analyticsContext: AnalyticsContext? = nil, completion: @escaping (InstantPage) -> Void) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let getAnalyticsContext: () -> AnalyticsContext = {
+        Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: origin)
+    }
+    let presentation = getAnalyticsContext().beginPresentation()
+    defer { presentation.end() }
     let actionsDisposable = DisposableSet()
     let initialState = State()
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         statePromise.set(stateValue.modify(f))
     }
 
     var close: (() -> Void)? = nil
 
     let arguments = Arguments(context: context, updatePrompt: { prompt in
+        if prompt.textInputState().hasExcludedAnalytics { origin.scope?.exclude() }
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { var c = $0
             guard !c.isProcessing else { return c }
             // Only editing the actual TEXT invalidates the shown result (it was generated for the old
@@ -185,16 +197,25 @@ public func RichTextAiComposeController(context: any AccountContextProtocol, com
         }
     })
 
-    let signal = (statePromise.get() |> deliverOnPrepareQueue |> map { state in
+    let signal = getAnalyticsContext().preservingPresentation(statePromise.get() |> deliverOnPrepareQueue |> map { state in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     })
 
     let controller = InputDataController(dataSignal: signal, title: strings().richTextAiComposeTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .chatRichEditorAiCompose
     controller.onDeinit = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         actionsDisposable.dispose()
     }
 
     let generate: () -> Void = {
+        let analyticsContext = getAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         let state = stateValue.with { $0 }
         if state.isProcessing { return }
 
@@ -204,7 +225,7 @@ public func RichTextAiComposeController(context: any AccountContextProtocol, com
         updateState { var c = $0; c.isProcessing = true; return c }
 
         let request = context.engine.messages.composeRichMessageWithAI(instantPage: nil, customPrompt: prompt)
-        actionsDisposable.add((request |> deliverOnMainQueue).start(next: { result in
+        actionsDisposable.add(analyticsContext.preservingPresentation(request |> deliverOnMainQueue).start(next: { result in
             // Show the result for preview instead of committing immediately; the button becomes "Add to Page".
             updateState { var c = $0; c.isProcessing = false; c.result = result; c.resultToken += 1; return c }
         }, error: { error in
@@ -226,6 +247,8 @@ public func RichTextAiComposeController(context: any AccountContextProtocol, com
 
     // Primary action: generate when there's no result yet, otherwise commit the previewed result.
     let performAction: () -> Void = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         if let result = stateValue.with({ $0.result }) {
             close?()
             completion(result)
@@ -244,7 +267,7 @@ public func RichTextAiComposeController(context: any AccountContextProtocol, com
     }, singleButton: true)
 
     // 0 = idle (Generate), 1 = processing (spinner), 2 = has result (Add to Page).
-    actionsDisposable.add((statePromise.get()
+    actionsDisposable.add(getAnalyticsContext().preservingPresentation(statePromise.get()
         |> map { state -> Int in state.isProcessing ? 1 : (state.result != nil ? 2 : 0) }
         |> distinctUntilChanged
         |> deliverOnMainQueue).start(next: { [weak modalInteractions] phase in
@@ -265,13 +288,18 @@ public func RichTextAiComposeController(context: any AccountContextProtocol, com
     }))
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(360, 240))
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.close()
     })
     controller.centerModalHeader = ModalHeaderData(title: strings().richTextAiComposeTitle)
 
     close = { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.close()
     }
     return modalController

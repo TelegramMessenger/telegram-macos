@@ -13,6 +13,7 @@ import InputDataUI
 import ChatUI
 import PeerInfoUI
 import LocalAnimations
+import AppAnalytics
 
 public struct AboutFeatureConfiguration {
     public struct Feature {
@@ -65,6 +66,41 @@ public struct AboutFeatureConfiguration {
         self.descriptionLinkCallback = descriptionLinkCallback
         self.footerLinkCallback = footerLinkCallback
         self.buttonCallback = buttonCallback
+    }
+}
+
+private extension AboutFeatureConfiguration {
+    func preservingAnalyticsContext(_ analyticsContext: AnalyticsContext) -> AboutFeatureConfiguration {
+        func guarded<Value, Result>(_ callback: ((Value) -> Result)?) -> ((Value) -> Result)? {
+            callback.map { callback in
+                return { value in
+                    let presentation = analyticsContext.beginPresentation()
+                    defer { presentation.end() }
+                    return callback(value)
+                }
+            }
+        }
+        return AboutFeatureConfiguration(
+            headerImage: headerImage,
+            headerSticker: headerSticker,
+            headerBackgroundColor: headerBackgroundColor,
+            title: title,
+            description: description,
+            features: features.map { feature in
+                Feature(icon: feature.icon, title: feature.title, description: feature.description, linkCallback: guarded(feature.linkCallback))
+            },
+            footerText: footerText,
+            buttonTitle: buttonTitle,
+            descriptionLinkCallback: guarded(descriptionLinkCallback),
+            footerLinkCallback: guarded(footerLinkCallback),
+            buttonCallback: buttonCallback.map { callback in
+                return {
+                    let presentation = analyticsContext.beginPresentation()
+                    defer { presentation.end() }
+                    callback()
+                }
+            }
+        )
     }
 }
 
@@ -407,8 +443,12 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func AboutFeatureModalController(context: any AccountContextProtocol, configuration: AboutFeatureConfiguration) -> InputDataModalController {
+public func AboutFeatureModalController(context: any AccountContextProtocol, configuration: AboutFeatureConfiguration, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
 
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
+    let configuration = configuration.preservingAnalyticsContext(origin)
     let actionsDisposable = DisposableSet()
 
     let initialState = State()
@@ -426,52 +466,77 @@ public func AboutFeatureModalController(context: any AccountContextProtocol, con
         close?()
     }, configuration: configuration)
 
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = origin.preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
 
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .appFeatureInfo
 
     controller.onDeinit = {
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         actionsDisposable.dispose()
     }
     
     controller.validateData = { _ in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         close?()
         return .none
     }
 
     let modalInteractions = ModalInteractions(acceptTitle: configuration.buttonTitle, accept: { [weak controller] in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         configuration.buttonCallback?()
         _ = controller?.returnKeyAction()
     }, singleButton: true)
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions)
+    modalController.analyticsContext = origin
     modalController._hasBorder = false
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         modalController?.close()
     })
 
     close = { [weak modalController] in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         modalController?.modal?.close()
     }
 
     return modalController
 }
 
-public func showAboutCocoonModal<Context: AccountContextProtocol>(context: Context) {
+public func showAboutCocoonModal<Context: AccountContextProtocol>(context: Context, analyticsContext: AnalyticsContext? = nil) {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let openLink: (String) -> Bool = { link in
+        let current = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: origin)
+        let presentation = current.beginPresentation()
+        defer { presentation.end() }
         let parsed = ChatHistoryLink.inApp(for: link.nsstring, context: context, openInfo: { peerId, toChat, messageId, initialAction in
+            let destination = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: current)
+            let presentation = destination.beginPresentation()
+            defer { presentation.end() }
             if toChat || initialAction != nil {
                 let controller = ChatAdditionController(context: context, chatLocation: .peer(peerId), focusTarget: .init(messageId: messageId), initialAction: initialAction)
+                controller.inheritAnalyticsContext(destination)
                 context.bindings.rootNavigation().push(controller)
             } else {
-                PeerInfoController<Context>.push(navigation: context.bindings.rootNavigation(), context: context, peerId: peerId)
+                PeerInfoController<Context>.push(navigation: context.bindings.rootNavigation(), context: context, peerId: peerId, analyticsContext: destination)
             }
             context.window.makeKeyAndOrderFront(nil)
         }, confirm: false)
-        ChatHistoryLink.execute(inapp: parsed)
+        ChatHistoryLink.execute(inapp: parsed, analyticsContext: current)
         if case .external = parsed.chatHistoryInAppLink {
             return false
         }
@@ -505,7 +570,7 @@ public func showAboutCocoonModal<Context: AccountContextProtocol>(context: Conte
         footerLinkCallback: openLink
     )
 
-    showModal(with: AboutFeatureModalController(context: context, configuration: configuration), for: context.window)
+    showModal(with: AboutFeatureModalController(context: context, configuration: configuration, analyticsContext: origin), for: context.window)
 }
 
 public func showDisableSharingModal(context: any AccountContextProtocol, peerId: PeerId, toggle: @escaping(Bool) -> Void) {

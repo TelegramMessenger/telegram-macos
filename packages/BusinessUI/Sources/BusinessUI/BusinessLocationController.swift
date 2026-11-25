@@ -21,6 +21,7 @@ import ChatModeTypes
 import MapKit
 import FoundationUtils
 import MessageTextUtils
+import AppAnalytics
 
 private class MapRowItem: GeneralRowItem {
     let context: (any AccountContextProtocol)
@@ -327,6 +328,7 @@ public func BusinessLocationController(context: (any AccountContextProtocol)) ->
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessLocationTitle, removeAfterDisappear: false, hasDone: true, identifier: "business_location")
+    controller.analyticsScreen = .settingsBusinessLocation
     
     controller.updateDatas = { datas in
         updateState { current in

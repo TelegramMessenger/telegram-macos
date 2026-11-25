@@ -50,8 +50,8 @@ func installStoriesUIHooks() {
     }, storiesBlockedPeersContext: { context in
         return (context as! AccountContext).storiesBlockedPeersContext
     })
-    hooks.showListStoryWithContext = { context, listContext, peerId, initialId in
-        StoryModalController.ShowListStory(context: context as! AccountContext, listContext: listContext, peerId: peerId, initialId: initialId)
+    hooks.showListStoryWithContext = { context, listContext, peerId, initialId, analyticsContext in
+        StoryModalController.ShowListStory(context: context as! AccountContext, listContext: listContext, peerId: peerId, initialId: initialId, analyticsContext: analyticsContext)
     }
     StoriesHooks.install(hooks)
 }

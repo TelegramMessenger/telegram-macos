@@ -2,6 +2,7 @@ import Cocoa
 import TGUIKit
 import TelegramTheme
 import Quartz
+import AppAnalytics
 
 fileprivate class PickerObserver {
     fileprivate var completion: ((NSImage?) -> Void)?
@@ -9,6 +10,7 @@ fileprivate class PickerObserver {
     @objc fileprivate func validated(_ picker:IKPictureTaker, _ code:Int, _ contextInfo:Any?) {
         guard let completion = self.completion else { return }
         self.completion = nil
+        Analytics.shared.screens.hideStandalone(owner: picker)
         if activePicturePicker === self {
             activePicturePicker = nil
         }
@@ -31,9 +33,15 @@ fileprivate class PickerObserver {
 
 private var activePicturePicker: PickerObserver?
 
-
 public func pickImage(for window:Window, maxSize:NSSize = NSMakeSize(640, 640), fileFirst: Bool = false, completion:@escaping (NSImage?) -> Void) {
+    pickImage(for: window, maxSize: maxSize, fileFirst: fileFirst, analyticsContext: nil, completion: completion)
+}
+
+public func pickImage(for window:Window, maxSize:NSSize = NSMakeSize(640, 640), fileFirst: Bool = false, analyticsContext: AnalyticsContext?, completion:@escaping (NSImage?) -> Void) {
+    let analyticsContext = analyticsContext ?? Analytics.shared.unresolvedContext()
+    let analyticsPresentation = analyticsContext.beginPresentation()
     guard activePicturePicker == nil else {
+        defer { analyticsPresentation.end() }
         completion(nil)
         return
     }
@@ -45,6 +53,7 @@ public func pickImage(for window:Window, maxSize:NSSize = NSMakeSize(640, 640), 
     if fileFirst {
     }
     observer.completion = { image in
+        defer { analyticsPresentation.end() }
         completion(image)
     }
     
@@ -53,6 +62,7 @@ public func pickImage(for window:Window, maxSize:NSSize = NSMakeSize(640, 640), 
     }
 
 
+    Analytics.shared.screens.showStandalone(.systemPhotoPicker, owner: taker, context: analyticsContext)
     taker.beginSheet(for: window, withDelegate: observer, didEnd: #selector(PickerObserver.validated(_:_:_:)), contextInfo: nil)
     
     

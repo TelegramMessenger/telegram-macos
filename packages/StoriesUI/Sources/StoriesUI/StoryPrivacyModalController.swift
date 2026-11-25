@@ -18,6 +18,7 @@ import TelegramTheme
 import TelegramUtils
 import TelegramMediaUtils
 import InlineStickerLayer
+import AppAnalytics
 import AlertsUI
 
 private final class StoryPreviewHeaderItem : GeneralRowItem {
@@ -1003,6 +1004,13 @@ public func StoryPrivacyModalController<Context: AccountContextProtocol>(context
     }
     
     let controller = InputDataController(dataSignal: signal, title: title)
+    switch reason {
+    case .share, .upload:
+        controller.analyticsScreen = .storiesPost
+    case .settings:
+        controller.analyticsScreen = .storiesPrivacy
+    }
+    
     controller.onDeinit = { [weak controller] in
         actionsDisposable.dispose()
         if let controller = controller {

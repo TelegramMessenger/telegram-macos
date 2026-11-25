@@ -559,7 +559,7 @@ final class WalletSendOpeningSubmoduleCompatibilityTests: XCTestCase {
             "self.contentView.transform = CGAffineTransform(translationX: 0.0, y: CGFloat(26.0 * k))\n                    .scaledBy(x: CGFloat(1.0 - 0.07 * k), y: CGFloat(1.0 - 0.07 * k))",
             "private var openingTime: Double? = UIAccessibility.isReduceMotionEnabled ? nil : 0.0",
             "if self.addressPhase == .revealing && self.openingTime == nil {",
-            "} else if hasPeer && continuesLoading && self.openingTime == nil {"
+            "} else if hasPeer && continuesLoading && self.openingTime == nil && !component.address.isEmpty {"
         ] {
             XCTAssertTrue(submodule.contains(line), line)
         }

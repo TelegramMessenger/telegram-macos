@@ -3,7 +3,7 @@
 import PackageDescription
 
 let deps: [(String, String)] = [
-
+    ("AppAnalytics", "../AppAnalytics"),
     ("TGUIKit", "../TGUIKit"),
     ("InputDataUI", "../InputDataUI"),
     ("GeneralRows", "../GeneralRows"),
@@ -49,6 +49,7 @@ let package = Package(
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
-            path: "Sources/DataUsageUI"),
+            path: "Sources/DataUsageUI",
+            resources: [.process("Resources/StorageUsageAssets.xcassets")]),
     ]
 )

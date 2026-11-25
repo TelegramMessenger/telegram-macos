@@ -123,7 +123,7 @@ private func reactionsValues(context: any AccountContextProtocol, react: @escapi
         let rect = NSMakeRect(0, 0, width + 20 + (accessToAll ? 0 : 20), 40 + 20)
         
         
-        let panel = Window(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+        let panel = MenuPanelWindow(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
        
         
 
@@ -323,6 +323,9 @@ public final class GroupCallSendMessageView : View {
     
     private func sendMessage() {
         let text = textView.inputTextState
+        guard !text.inputText.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
         self.textView.set(.init())
         self.arguments?.message(text)
 

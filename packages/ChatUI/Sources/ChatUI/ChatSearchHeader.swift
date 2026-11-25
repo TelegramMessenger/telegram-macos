@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import Foundation
 import TelegramCore
 import TGUIKit
@@ -102,8 +103,10 @@ private final class ChatSearchTagsView: View {
     class Arguments {
         let context: any AccountContextProtocol
         let callback: (EmojiTag?)->Void
-        init(context: any AccountContextProtocol, callback: @escaping(EmojiTag?)->Void) {
+        let analyticsContext: AnalyticsContext
+        init(context: any AccountContextProtocol, analyticsContext: AnalyticsContext, callback: @escaping(EmojiTag?)->Void) {
             self.context = context
+            self.analyticsContext = analyticsContext
             self.callback = callback
         }
     }
@@ -143,7 +146,7 @@ private final class ChatSearchTagsView: View {
                             let context = item.arguments.context
 
                             menu.addItem(ContextMenuItem(item.tag.tag.title != nil ? strings().chatReactionContextEditTag : strings().chatReactionContextAddLabel, handler: {
-                                ChatNavigationHooks.shared.showEditTagLabelObserved(context, item.tag.tag.reaction, item.tag.tag.title, context.window)
+                                ChatNavigationHooks.shared.showEditTagLabelObserved(context, item.tag.tag.reaction, item.tag.tag.title, context.window, analyticsContext: item.arguments.analyticsContext, entry: .searchTagMenu)
                             }, itemImage: MenuAnimation.menu_tag_rename.value))
                             
                             return menu
@@ -313,8 +316,9 @@ private final class ChatSearchTagsView: View {
             }
             let context = arguments.context
             let tag = self.tag
+            let origin = arguments.analyticsContext
             return [NSAccessibilityCustomAction(name: tag.tag.title != nil ? strings().chatReactionContextEditTag : strings().chatReactionContextAddLabel, handler: {
-                ChatNavigationHooks.shared.showEditTagLabelObserved(context, tag.tag.reaction, tag.tag.title, context.window)
+                ChatNavigationHooks.shared.showEditTagLabelObserved(context, tag.tag.reaction, tag.tag.title, context.window, analyticsContext: origin, entry: .accessibility)
                 return true
             })]
         }
@@ -514,6 +518,7 @@ private final class ChatSearchTagsView: View {
         private let secondTextView = TextView()
         private let chevron = ImageView()
         private var context: (any AccountContextProtocol)?
+        private var analyticsContext: AnalyticsContext?
         required init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             addSubview(tagImageView)
@@ -534,7 +539,10 @@ private final class ChatSearchTagsView: View {
             
             self.set(handler: { [weak self] _ in
                 if let self, let context = self.context {
-                    prem(with: PremiumBoardingController(context: context, source: .saved_tags, openFeatures: true), for: context.window, morphSource: { [weak self] in self })
+                    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: self.analyticsContext ?? Analytics.shared.unresolvedContext())
+                    let presentation = origin.beginPresentation()
+                    defer { presentation.end() }
+                    prem(with: PremiumBoardingController(context: context, source: .saved_tags, openFeatures: true, analyticsContext: origin), for: context.window, morphSource: { [weak self] in self })
                 }
             }, for: .Click)
             
@@ -544,8 +552,12 @@ private final class ChatSearchTagsView: View {
             fatalError("init(coder:) has not been implemented")
         }
         
-        func set(context: any AccountContextProtocol) {
+        func set(context: any AccountContextProtocol, analyticsContext: AnalyticsContext) {
+            if analyticsContext.isExcluded {
+                self.analyticsContext?.scope?.exclude()
+            }
             self.context = context
+            self.analyticsContext = analyticsContext
             let tagLayout: TextViewLayout = TextViewLayout(.initialize(string: strings().chatHeaderSearchAddTags, color: theme.colors.accent, font: .normal(.text)))
             let secondLayout: TextViewLayout = TextViewLayout(.initialize(string: strings().chatHeaderSearchAddTagsSecond, color: theme.colors.grayText, font: .normal(.text)))
 
@@ -605,17 +617,22 @@ private final class ChatSearchTagsView: View {
     
     private var entries: [EmojiTagEntry] = []
     private var context: (any AccountContextProtocol)?
+    private var analyticsContext: AnalyticsContext?
     private var callback:((EmojiTag?)->Void)?
     private var tags: [EmojiTag] = []
     
     private var premiumView: PremiumView?
     
-    func set(tags: [EmojiTag], context: any AccountContextProtocol, animated: Bool, callback: @escaping(EmojiTag?)->Void) {
+    func set(tags: [EmojiTag], context: any AccountContextProtocol, analyticsContext: AnalyticsContext, animated: Bool, callback: @escaping(EmojiTag?)->Void) {
         
+        if analyticsContext.isExcluded {
+            self.analyticsContext?.scope?.exclude()
+        }
         self.tags = tags
         self.context = context
+        self.analyticsContext = analyticsContext
         self.callback = callback
-        let arguments = Arguments(context: context, callback: callback)
+        let arguments = Arguments(context: context, analyticsContext: analyticsContext, callback: callback)
         
         var entries: [EmojiTagEntry] = []
         var index: Int = 0
@@ -656,7 +673,7 @@ private final class ChatSearchTagsView: View {
                 self.premiumView = current
                 addSubview(current)
             }
-            current.set(context: context)
+            current.set(context: context, analyticsContext: analyticsContext)
         } else if let premiumView = self.premiumView {
             performSubviewRemoval(premiumView, animated: animated)
             self.premiumView = nil
@@ -666,7 +683,7 @@ private final class ChatSearchTagsView: View {
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         if let context = self.context, let callback = self.callback {
-            self.set(tags: self.tags, context: context, animated: false, callback: callback)
+            self.set(tags: self.tags, context: context, analyticsContext: analyticsContext ?? Analytics.shared.unresolvedContext(), animated: false, callback: callback)
         }
     }
 }
@@ -713,12 +730,16 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
     private let tokenDisposable = MetaDisposable()
    
     required init(_ chatInteraction: ChatInteraction, state: ChatHeaderState, frame: NSRect) {
+        let origin = chatInteraction.captureAnalyticsContext()
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
 
         switch state.main {
         case let .search(interactions, _, initialString, _, _, _):
             self.interactions = interactions
             self.parentInteractions = chatInteraction
             self.chatInteraction = ChatInteraction(chatLocation: chatInteraction.chatLocation, context: chatInteraction.interactionContext, mode: chatInteraction.mode)
+            self.chatInteraction.inheritedAnalyticsContext = origin
             self.chatInteraction.update({$0.updatedPeer({_ in chatInteraction.presentation.peer})})
             self.inputContextHelper = InputContextHelper(chatInteraction: self.chatInteraction, highlightInsteadOfSelect: true)
 
@@ -731,6 +752,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         }
 
         super.init()
+        self.inputContextHelper.fullWidthInset = 12
         
         self.inputContextHelper.controller.onSearchMessageSelected = { [weak self] message in
             self?.inputInteraction.update({ state in
@@ -802,6 +824,13 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
     private var calendarAbility: Bool {
         return chatInteraction.mode != .scheduled && chatInteraction.mode != .pinned
     }
+
+    private func showCalendar() {
+        let interaction = parentInteractions
+        if let controller = ChatNavigationHooks.shared.makeCalendarModal(interaction.interactionContext, interaction.peerId, interaction.chatLocation.threadId, Date(), interactions.calendarAction) {
+            showModal(with: controller, for: interaction.interactionContext.window)
+        }
+    }
     
     private func fromAbility(_ chatLocation: ChatLocation) -> Bool {
         if let peer = chatInteraction.presentation.peer {
@@ -821,10 +850,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
             let stateValue = self.query
             
             updateCount(current: max(value.selectedIndex + 1, 0), total: max(value.totalCount, value.messages.0.count), animated: animated)
-            prev.isEnabled = !value.messages.0.isEmpty && value.selectedIndex < value.messages.0.count - 1
-            next.isEnabled = !value.messages.0.isEmpty && value.selectedIndex > 0
-            next.set(image: next.isEnabled ? theme.icons.chat_search_next : theme.icons.chat_search_next_disabled, for: .Normal)
-            prev.set(image: prev.isEnabled ? theme.icons.chat_search_prev : theme.icons.chat_search_prev_disabled, for: .Normal)
+            updateSearchState()
 
             
             
@@ -1136,12 +1162,8 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         
         
         
-        calendar.set(handler: { [weak self] calendar in
-            guard let `self` = self else {return}
-            let interaction = self.parentInteractions
-            if let calendarController = ChatNavigationHooks.shared.makeCalendarPopover(interaction.interactionContext, interaction.peerId, interaction.chatLocation.threadId, Date(), self.interactions.calendarAction) {
-                showPopover(for: calendar, with: calendarController, edge: .maxY, inset: NSMakePoint(-160, -40))
-            }
+        calendar.set(handler: { [weak self] _ in
+            self?.showCalendar()
         }, for: .Click)
 
         searchContainer.addSubview(searchView)
@@ -1187,8 +1209,9 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
                 }
                 
                 let context = self.parentInteractions.interactionContext
+                let origin = parentInteractions.captureAnalyticsContext()
                 
-                current.set(tags: tags, context: chatInteraction.interactionContext, animated: false, callback: { [weak self] selected in
+                current.set(tags: tags, context: chatInteraction.interactionContext, analyticsContext: origin, animated: false, callback: { [weak self] selected in
                     if let `self` = self {
                         if let selected {
                             if selected.tag.reaction == self.tagsView?.selected.first?.tag.reaction {
@@ -1197,7 +1220,10 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
                                 self.parentInteractions.setLocationTag(.customTag(ReactionsMessageAttribute.messageTag(reaction: selected.tag.reaction), nil))
                             }
                         } else {
-                            prem(with: PremiumBoardingController(context: context, source: .saved_tags, openFeatures: true), for: context.window)
+                            let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: origin)
+                            let presentation = origin.beginPresentation()
+                            defer { presentation.end() }
+                            prem(with: PremiumBoardingController(context: context, source: .saved_tags, openFeatures: true, analyticsContext: origin), for: context.window)
                         }
                         
                     }
@@ -1216,13 +1242,6 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         super.updateLocalizationAndTheme(theme: theme)
         let theme = (theme as! TelegramPresentationTheme)
         backgroundColor = .clear
-
-        next.set(image: theme.icons.chat_search_next, for: .Normal)
-        _ = next.sizeToFit()
-
-        prev.set(image: theme.icons.chat_search_prev, for: .Normal)
-        _ = prev.sizeToFit()
-
 
         calendar.set(image: theme.icons.chat_search_calendar, for: .Normal)
         _ = calendar.sizeToFit()
@@ -1246,7 +1265,13 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
     }
     
     func updateSearchState() {
-       
+        let state = inputInteraction.state
+        prev.isEnabled = !state.messages.0.isEmpty && state.selectedIndex < state.messages.0.count - 1
+        next.isEnabled = !state.messages.0.isEmpty && state.selectedIndex > 0
+        next.set(image: next.isEnabled ? theme.icons.chat_search_next : theme.icons.chat_search_next_disabled, for: .Normal)
+        prev.set(image: prev.isEnabled ? theme.icons.chat_search_prev : theme.icons.chat_search_prev_disabled, for: .Normal)
+        _ = next.sizeToFit()
+        _ = prev.sizeToFit()
     }
     
     private func closeCalendarPopover() {
@@ -1272,7 +1297,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         perform()
     }
     
-    private var searchWidth: CGFloat {
+    private var searchAccessoryWidth: CGFloat {
         let gap: CGFloat = 8
         var rightSide: CGFloat = gap + cancel.frame.width
         if !calendar.isHidden {
@@ -1283,10 +1308,17 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         }
         rightSide += gap + next.frame.width
         rightSide += gap + prev.frame.width
-        if countWidth > 0 {
-            rightSide += gap + countWidth
-        }
-        return max(0, frame.width - gap - rightSide - gap)
+        return rightSide
+    }
+
+    private var visibleCountWidth: CGFloat {
+        let available = frame.width - 16 - searchAccessoryWidth
+        return countWidth > 0 && available - countWidth - 8 >= 160 ? countWidth : 0
+    }
+
+    private var searchWidth: CGFloat {
+        let countSpace = visibleCountWidth > 0 ? visibleCountWidth + 8 : 0
+        return max(0, frame.width - 16 - searchAccessoryWidth - countSpace)
     }
 
     private func countLayout(_ string: String) -> TextViewLayout {
@@ -1347,6 +1379,8 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         transition.updateFrame(view: prev, frame: prev.centerFrameY(x: searchView.frame.maxX + gap))
 
         let countHeight: CGFloat = 20
+        let countWidth = visibleCountWidth
+        countContainer.isHidden = countWidth == 0
         let countFrame = NSMakeRect(prev.frame.maxX + gap, floor((40 - countHeight) / 2), countWidth, countHeight)
         transition.updateFrame(view: countContainer, frame: countFrame)
 
@@ -1371,12 +1405,10 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
 
         transition.updateFrame(view: cancel, frame: cancel.centerFrameY(x: x))
 
-        let inputContextView = inputContextHelper.controller.view
-        let rect = CGRect(origin: inputContextHelper.controller.frame.origin, size: NSSize(width: size.width, height: inputContextHelper.controller.frame.height))
-        transition.updateFrame(view: inputContextView, frame: rect)
+        inputContextHelper.updateLayout(animated: transition.isAnimated)
 
         if let tagsView = tagsView {
-            transition.updateFrame(view: tagsView, frame: NSMakeRect(0, 35, size.width, 40))
+            transition.updateFrame(view: tagsView, frame: NSMakeRect(12, 35, max(0, size.width - 24), 40))
         }
     }
 

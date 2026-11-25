@@ -5,7 +5,7 @@ final class RichDraftStoreTests: XCTestCase {
     private let key = ChatRichTextDraftKey(accountId: 1, peerId: 2, threadId: nil, isWelcome: false)
 
     func testEmptyDraftMutationCycleCannotReviveCapturedRevision() {
-        let store = ChatRichTextDraftStore<Int>()
+        let store = ChatRichTextDraftStore<Int, NSObject>()
         let revision = store.captureRevision(for: key)
         XCTAssertFalse(store.set(nil, for: key))
         XCTAssertTrue(revision.isValid)
@@ -16,7 +16,7 @@ final class RichDraftStoreTests: XCTestCase {
     }
 
     func testAllObserversInvalidateOnlyForChangedKey() {
-        let store = ChatRichTextDraftStore<Int>()
+        let store = ChatRichTextDraftStore<Int, NSObject>()
         let first = store.captureRevision(for: key)
         let second = store.captureRevision(for: key)
         let otherKey = ChatRichTextDraftKey(accountId: 9, peerId: 2, threadId: nil, isWelcome: false)
@@ -29,7 +29,7 @@ final class RichDraftStoreTests: XCTestCase {
     }
 
     func testUnchangedValueKeepsObserversValid() {
-        let store = ChatRichTextDraftStore<Int>()
+        let store = ChatRichTextDraftStore<Int, NSObject>()
         store.set(1, for: key)
         let revision = store.captureRevision(for: key)
         XCTAssertFalse(store.set(1, for: key))
@@ -37,7 +37,7 @@ final class RichDraftStoreTests: XCTestCase {
     }
 
     func testDraftStoreDoesNotRetainFinishedActionRevision() {
-        let store = ChatRichTextDraftStore<Int>()
+        let store = ChatRichTextDraftStore<Int, NSObject>()
         var revision: ChatRichTextDraftRevision? = store.captureRevision(for: key)
         weak var observed = revision
         XCTAssertNotNil(observed)
@@ -49,7 +49,7 @@ final class RichDraftStoreTests: XCTestCase {
     }
 
     func testMissingThreadAndZeroThreadAreDistinct() {
-        let store = ChatRichTextDraftStore<Int>()
+        let store = ChatRichTextDraftStore<Int, NSObject>()
         let zeroThread = ChatRichTextDraftKey(accountId: 1, peerId: 2, threadId: 0, isWelcome: false)
         store.set(1, for: key)
         store.set(2, for: zeroThread)
@@ -58,7 +58,7 @@ final class RichDraftStoreTests: XCTestCase {
     }
 
     func testNewObservationAfterMutationDoesNotReviveOldObservation() {
-        let store = ChatRichTextDraftStore<Int>()
+        let store = ChatRichTextDraftStore<Int, NSObject>()
         let old = store.captureRevision(for: key)
         store.set(1, for: key)
         let current = store.captureRevision(for: key)
@@ -69,7 +69,7 @@ final class RichDraftStoreTests: XCTestCase {
     }
 
     func testConcurrentWritesInvalidateObservedRevision() {
-        let store = ChatRichTextDraftStore<Int>()
+        let store = ChatRichTextDraftStore<Int, NSObject>()
         let revision = store.captureRevision(for: key)
         DispatchQueue.concurrentPerform(iterations: 64) { value in store.set(value, for: self.key) }
         XCTAssertFalse(revision.isValid)

@@ -243,6 +243,7 @@ public final class RichTextEditorView: NSView {
 
     public func undo() { canvas.effectiveUndoManager?.undo() }
     public func redo() { canvas.effectiveUndoManager?.redo() }
+    public func removeAllUndoActions() { canvas.effectiveUndoManager?.removeAllActions() }
 
     /// True when a non-collapsed text selection exists.
     public var hasSelection: Bool { canvas.selFrom != canvas.selTo }
@@ -438,6 +439,10 @@ public final class RichTextEditorView: NSView {
     /// SIZED (frame height) to its content; the editor hosts it full-bleed and learns the height back.
     public func registerMediaGroupSliderProvider(_ provider: @escaping (_ mediaIDs: [String], _ width: CGFloat) -> NSView?) {
         canvas.mediaGroupSliderProvider = provider
+        canvas.mediaGroupSliderUpdateProvider = nil
+    }
+    public func registerMediaGroupSliderProvider(_ provider: @escaping (_ mediaIDs: [String], _ spoilers: [Bool], _ width: CGFloat, _ view: NSView?) -> NSView?) {
+        canvas.mediaGroupSliderUpdateProvider = provider
     }
     /// Provide the on-media overlay controls (pills) for collage/slider/single image·video blocks.
     public func registerMediaControlsProvider(_ provider: @escaping (MediaControlsContext) -> NSView?) {
@@ -533,6 +538,12 @@ public final class RichTextEditorView: NSView {
     /// leave the façade as first responder, so no typed key reaches the editor.
     public func makeEditorFirstResponder() {
         _ = window?.makeFirstResponder(canvas)
+    }
+
+    public func handleKeyDuringComposition(_ event: NSEvent) -> Bool {
+        guard canvas.hasMarkedText() else { return false }
+        canvas.keyDown(with: event)
+        return true
     }
 
     /// Scrolls the editor's enclosing scroller so the caret is visible. When the editor doesn't scroll

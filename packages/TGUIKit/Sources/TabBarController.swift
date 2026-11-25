@@ -61,6 +61,14 @@ public class TabBarController: ViewController, TabViewDelegate {
 
     
     public var didChangedIndex:(Int)->Void = {_ in}
+    public var allowsTabReordering: Bool {
+        get { genericView.tabView.allowsReordering }
+        set { genericView.tabView.allowsReordering = newValue }
+    }
+    public var didReorderTabs: () -> Void {
+        get { genericView.tabView.didReorderTabs }
+        set { genericView.tabView.didReorderTabs = newValue }
+    }
     public var selectedIndex: Int {
         return genericView.tabView.selectedIndex
     }
@@ -200,6 +208,10 @@ public class TabBarController: ViewController, TabViewDelegate {
         genericView.updateShadow()
         tab.controller.updateContainerContentInsets(contentInsetsForTabs, transition: .immediate)
     }
+    public func index(of controller: ViewController) -> Int? {
+        return (0 ..< count).first { tab(at: $0).controller === controller }
+    }
+
     public func tab(at index:Int) -> TabItem {
         return genericView.tabView.tab(at: index)
     }

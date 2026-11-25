@@ -66,4 +66,44 @@ final class AnimatableContentObserverTests: XCTestCase {
         scroll.contentView.scroll(to: NSMakePoint(0, 200))
         XCTAssertGreaterThan(target.calls, 0)
     }
+
+    func testReattachedViewFollowsOnlyItsCurrentScrollView() {
+        let window = NSWindow(contentRect: NSMakeRect(0, 0, 300, 300), styleMask: [.titled], backing: .buffered, defer: true)
+        let root = NSView(frame: NSMakeRect(0, 0, 300, 300))
+        window.contentView = root
+        func makeScroll() -> NSScrollView {
+            let scroll = NSScrollView(frame: NSMakeRect(0, 0, 300, 300))
+            scroll.documentView = NSView(frame: NSMakeRect(0, 0, 300, 1000))
+            scroll.contentView.postsBoundsChangedNotifications = true
+            root.addSubview(scroll)
+            return scroll
+        }
+        let first = makeScroll()
+        let second = makeScroll()
+        let observed = NSView(frame: NSMakeRect(0, 500, 20, 20))
+
+        let target = CountingTarget()
+        let observer = AnimatableContentObserver()
+        for _ in 0 ..< 3 {
+            first.documentView?.addSubview(observed)
+            observer.update(for: observed, target: target, selector: #selector(CountingTarget.update))
+            observed.removeFromSuperview()
+            observer.update(for: observed, target: target, selector: #selector(CountingTarget.update))
+        }
+        first.contentView.scroll(to: NSMakePoint(0, 100))
+        XCTAssertEqual(target.calls, 0)
+
+        first.documentView?.addSubview(observed)
+        observer.update(for: observed, target: target, selector: #selector(CountingTarget.update))
+        first.contentView.scroll(to: NSMakePoint(0, 200))
+        XCTAssertEqual(target.calls, 1)
+
+        observed.removeFromSuperview()
+        second.documentView?.addSubview(observed)
+        observer.update(for: observed, target: target, selector: #selector(CountingTarget.update))
+        first.contentView.scroll(to: NSMakePoint(0, 300))
+        XCTAssertEqual(target.calls, 1)
+        second.contentView.scroll(to: NSMakePoint(0, 100))
+        XCTAssertEqual(target.calls, 2)
+    }
 }

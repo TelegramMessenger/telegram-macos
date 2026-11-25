@@ -32,6 +32,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 private final class EmptyRowItem: GeneralRowItem {
     fileprivate let arguments: Arguments
@@ -1242,7 +1243,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func StarGift_MarketplaceController(context: (any AccountContextProtocol), peerId: PeerId, gift: StarGift.Gift, craftGiftsContext: CraftGiftsContext? = nil, excludedReferences: Set<StarGiftReference> = [], selectGift: ((ProfileGiftsContext.State.StarGift) -> Void)? = nil) -> InputDataModalController {
+public func StarGift_MarketplaceController(context: (any AccountContextProtocol), peerId: PeerId, gift: StarGift.Gift, craftGiftsContext: CraftGiftsContext? = nil, excludedReferences: Set<StarGiftReference> = [], selectGift: ((ProfileGiftsContext.State.StarGift) -> Bool)? = nil) -> InputDataModalController {
 
     
     
@@ -1362,17 +1363,21 @@ public func StarGift_MarketplaceController(context: (any AccountContextProtocol)
         
         resaleContext?.updateFilterAttributes(currentFilterAttributes)
     }, open: { [weak resaleContext] gift, morphSource in
-        let onPurchaseCallback: ((ProfileGiftsContext.State.StarGift) -> Void)? = { purchasedGift in
-            selectGift?(purchasedGift)
-            close?()
+        let onPurchaseCallback: (ProfileGiftsContext.State.StarGift) -> Void = { purchasedGift in
+            if let selectGift, !selectGift(purchasedGift) {
+                craftGiftsContext?.reload()
+            } else {
+                close?()
+            }
         }
         showModal(with: StarGift_Nft_Controller(context: context, gift: .unique(gift), source: .quickLook(nil, gift), purpose: .starGift(gift: .unique(gift), convertStars: nil, text: nil, entities: nil, nameHidden: false, savedToProfile: false, converted: false, fromProfile: false, upgraded: true, prepaidUpgradeHash: nil, transferStars: nil, canExportDate: nil, reference: nil, sender: nil, saverId: nil, canTransferDate: nil, canResaleDate: nil, dropOriginalDetailsStars: nil, canUpgrade: false, number: nil, isRefunded: false, canCraftAt: nil, craftChancePermille: nil, upgradeStars: nil), resaleContext: resaleContext, toPeerId: peerId, onPurchase: onPurchaseCallback), for: window, morphSource: morphSource)
     }, clearFilters: { [weak resaleContext] in
         resaleContext?.updateFilterAttributes([])
     }, selectGift: selectGift.flatMap { callback in
         return { gift in
-            callback(gift)
-            close?()
+            if callback(gift) {
+                close?()
+            }
         }
     })
     
@@ -1460,6 +1465,7 @@ public func StarGift_MarketplaceController(context: (any AccountContextProtocol)
 
     
     let controller = InputDataController(dataSignal: signal, title: isCraftMode ? "Select Gifts" : "")
+    controller.analyticsScreen = isCraftMode ? AnalyticsScreen.giftsCraftPicker : AnalyticsScreen.giftsMarketplace
     
     getController = { [weak controller] in
         return controller

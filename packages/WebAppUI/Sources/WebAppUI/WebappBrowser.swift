@@ -27,6 +27,7 @@ import PremiumStatusUI
 import SystemPermissions
 import Svg
 import LocalAuthentication
+import AppAnalytics
 
 public protocol BrowserPage {
     func contextMenu() -> ContextMenu
@@ -44,7 +45,7 @@ public extension BrowserPage {
     func cancelPendingPageActions() { cancelPendingInvoices() }
 }
 
-private func makeWebViewController(context: (any AccountContextProtocol), data: BrowserTabData.Data, unique: BrowserTabData.Unique, makeLinkManager:@escaping(BrowserTabData.Unique)->BrowserLinkManager?) -> Signal<WebpageModalController, RequestWebViewError> {
+private func makeWebViewController(context: (any AccountContextProtocol), data: BrowserTabData.Data, unique: BrowserTabData.Unique, analyticsOrigin: BrowserAnalyticsOrigin, makeLinkManager:@escaping(BrowserTabData.Unique)->BrowserLinkManager?) -> Signal<WebpageModalController, RequestWebViewError> {
     
     guard let bot = data.peer?._asPeer() else {
         return .fail(.generic)
@@ -93,7 +94,7 @@ private func makeWebViewController(context: (any AccountContextProtocol), data: 
         settings = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.BotAppSettings(id: bot.id)) |> deliverOnMainQueue |> castError(RequestWebViewError.self)
 
         
-        let disposable = (combineLatest(signal, attach, settings)).start(next: { values in
+        let disposable = analyticsOrigin.preserving(combineLatest(signal, attach, settings)).start(next: { values in
             let url = values.0.0
             let requestData = values.0.1
             let attach = values.1
@@ -108,7 +109,11 @@ private func makeWebViewController(context: (any AccountContextProtocol), data: 
                     thumbFile = MenuAnimation.menu_folder_bot.file
                 }
             }
+            if let entry = analyticsMiniAppEntry(data) {
+                Analytics.shared.send(AnalyticsEvents.botMiniAppOpen(entry: entry))
+            }
             let controller = WebpageModalController(context: context, url: url, title: bot.displayTitle, requestData: requestData, thumbFile: thumbFile, fromMenu: true, hasSettings: hasSettings, browser: makeLinkManager(unique), settings: settings)
+            analyticsOrigin.bind(controller)
             subscriber.putNext(controller)
 
             subscriber.putCompletion()
@@ -121,7 +126,29 @@ private func makeWebViewController(context: (any AccountContextProtocol), data: 
 
 
 
-
+private func analyticsMiniAppEntry(_ data: BrowserTabData.Data) -> AnalyticsEvents.BotMiniAppOpenEntry? {
+    switch data {
+    case let .mainapp(_, source):
+        if case .inline = source {
+            return .link
+        }
+        return .mainApp
+    case let .webapp(_, _, buttonText, _, _, _, _, fromMenu):
+        if fromMenu {
+            return .menuButton
+        }
+        return buttonText.isEmpty ? .attach : .inlineButton
+    case let .simple(_, _, _, source):
+        if case .settings = source {
+            return .sideMenu
+        }
+        return .inlineButton
+    case .straight:
+        return .link
+    case .tonsite, .instantView, .game:
+        return nil
+    }
+}
 
 private func layoutTabs(_ tabs: [BrowserTabData], width: CGFloat) -> [BrowserTabData] {
     var tabs = tabs
@@ -143,11 +170,11 @@ private final class Arguments {
     public let selectAtIndex:(Int)->Void
     public let makeLinkManager:(BrowserTabData.Unique)->BrowserLinkManager
     public let contextMenu:(BrowserTabData)->ContextMenu?
-    public let insertTab:(BrowserTabData.Data, BrowserTabData.Unique?)->Void
+    public let insertTab:(BrowserTabData.Data, BrowserAnalyticsOrigin?, BrowserTabData.Unique?)->Void
     public let shake:(BrowserTabData.Unique)->Void
     public let getExternalState: (BrowserTabData.Unique)->WebpageModalState?
     public let updateFullscreen:(Bool)->Void
-    public init(context: (any AccountContextProtocol), add: @escaping(Control)->Void, close:@escaping()->Void, select:@escaping(BrowserTabData.Unique)->Void, setLoadingState:@escaping(BrowserTabData.Unique, BrowserTabData.LoadingState)->Void, setExternalState:@escaping(BrowserTabData.Unique, WebpageModalState)->Void, closeTab:@escaping(BrowserTabData.Unique?, Bool)->Void, removeTab:@escaping(BrowserTabData.Unique)->Void, selectAtIndex:@escaping(Int)->Void, makeLinkManager:@escaping(BrowserTabData.Unique)->BrowserLinkManager, contextMenu:@escaping(BrowserTabData)->ContextMenu?, insertTab:@escaping(BrowserTabData.Data, BrowserTabData.Unique?)->Void, shake:@escaping(BrowserTabData.Unique)->Void, getExternalState: @escaping(BrowserTabData.Unique)->WebpageModalState?, updateFullscreen:@escaping(Bool)->Void) {
+    public init(context: (any AccountContextProtocol), add: @escaping(Control)->Void, close:@escaping()->Void, select:@escaping(BrowserTabData.Unique)->Void, setLoadingState:@escaping(BrowserTabData.Unique, BrowserTabData.LoadingState)->Void, setExternalState:@escaping(BrowserTabData.Unique, WebpageModalState)->Void, closeTab:@escaping(BrowserTabData.Unique?, Bool)->Void, removeTab:@escaping(BrowserTabData.Unique)->Void, selectAtIndex:@escaping(Int)->Void, makeLinkManager:@escaping(BrowserTabData.Unique)->BrowserLinkManager, contextMenu:@escaping(BrowserTabData)->ContextMenu?, insertTab:@escaping(BrowserTabData.Data, BrowserAnalyticsOrigin?, BrowserTabData.Unique?)->Void, shake:@escaping(BrowserTabData.Unique)->Void, getExternalState: @escaping(BrowserTabData.Unique)->WebpageModalState?, updateFullscreen:@escaping(Bool)->Void) {
         self.context = context
         self.add = add
         self.close = close
@@ -197,6 +224,7 @@ public final class WebappBrowser : Window {
         self.contentView?.layer?.masksToBounds = false
         
         self.modalInset = 10
+        self.modalPresentationParent = parent
        
         self.isOpaque = false
         self.hasShadow = false
@@ -353,6 +381,7 @@ private final class TabView: Control {
     private var loading: InfiniteProgressView?
         
     private var premiumStatus: PremiumStatusControl?
+    private var verificationStatus: PremiumStatusControl?
     private let backgroundView = View()
     
     public private(set) var data: BrowserTabData?
@@ -541,6 +570,14 @@ private final class TabView: Control {
                 }
             }
             
+            if let peer = item.peer, let control = PremiumStatusControl.control(peer._asPeer(), account: arguments.context.account, inlinePacksContext: arguments.context.inlinePacksContext, left: true, isSelected: false, cached: self.verificationStatus, animated: false) {
+                self.verificationStatus = control
+                self.addSubview(control)
+            } else if let view = self.verificationStatus {
+                performSubviewRemoval(view, animated: animated)
+                self.verificationStatus = nil
+            }
+
             if let peer = item.peer {
                 let statusControl = PremiumStatusControl.control(peer._asPeer(), account: arguments.context.account, inlinePacksContext: arguments.context.inlinePacksContext, left: false, isSelected: false, cached: self.premiumStatus, animated: false)
 
@@ -575,6 +612,10 @@ private final class TabView: Control {
                performSubviewRemoval(view, animated: animated)
                self.premiumStatus = nil
            }
+            if let view = self.verificationStatus {
+                performSubviewRemoval(view, animated: animated)
+                self.verificationStatus = nil
+            }
             if let urlText {
                 performSubviewRemoval(urlText, animated: animated)
                 self.urlText = nil
@@ -604,18 +645,19 @@ private final class TabView: Control {
                 transition.updateFrame(view: loading, frame: imageView.frame)
             }
         }
-        if let urlText {
-            if let textView {
-                transition.updateFrame(view: textView, frame: CGRect(origin: NSMakePoint(50, 4), size: textView.frame.size))
+        if let textView {
+            let titleLayout = WebAppTitleLayout(titleSize: textView.frame.size, verificationSize: verificationStatus?.frame.size, statusSize: premiumStatus?.frame.size, statusSpacing: 3)
+            let origin = NSMakePoint(50, urlText != nil ? 4 : floor((size.height - titleLayout.size.height) / 2))
+            transition.updateFrame(view: textView, frame: titleLayout.titleFrame.offsetBy(dx: origin.x, dy: origin.y))
+            if let verificationStatus, let frame = titleLayout.verificationFrame {
+                transition.updateFrame(view: verificationStatus, frame: frame.offsetBy(dx: origin.x, dy: origin.y))
             }
-            transition.updateFrame(view: urlText, frame: CGRect(origin: NSMakePoint(50, size.height - urlText.frame.height - 4), size: urlText.frame.size))
-        } else {
-            if let textView {
-                transition.updateFrame(view: textView, frame: textView.centerFrameY(x: 50))
+            if let premiumStatus, let frame = titleLayout.statusFrame {
+                transition.updateFrame(view: premiumStatus, frame: frame.offsetBy(dx: origin.x, dy: origin.y))
             }
         }
-        if let premiumStatus, let textView {
-            transition.updateFrame(view: premiumStatus, frame: CGRect(origin: NSMakePoint(textView.frame.maxX + 3, textView.frame.minY), size: premiumStatus.frame.size))
+        if let urlText {
+            transition.updateFrame(view: urlText, frame: CGRect(origin: NSMakePoint(50, size.height - urlText.frame.height - 4), size: urlText.frame.size))
         }
     }
     
@@ -1020,15 +1062,10 @@ public struct BrowserTabData : Comparable, Identifiable {
     
     public var width: CGFloat {
         if let title {
-            let textWidth = max(title.layoutSize.width, urlText?.layoutSize.width ?? 0)
-            var width = textWidth + 20 + 20 + 10 + 20
-            if let peer = self.peer {
-                if let size = PremiumStatusControl.controlSize(peer._asPeer(), false, left: false) {
-                    width += (size.width) + 2
-                }
-            }
-            
-            return width
+            let verificationSize = peer.flatMap { PremiumStatusControl.controlSize($0._asPeer(), false, left: true) }
+            let statusSize = peer.flatMap { PremiumStatusControl.controlSize($0._asPeer(), false, left: false) }
+            let badgeWidth = WebAppTitleLayout.reservedWidth(verificationSize: verificationSize, statusSize: statusSize, statusSpacing: 3)
+            return max(title.layoutSize.width + badgeWidth, urlText?.layoutSize.width ?? 0) + 20 + 20 + 10 + 20
         } else {
             return 40
         }
@@ -1054,8 +1091,11 @@ public struct BrowserTabData : Comparable, Identifiable {
         if selected {
             let color: NSColor = tabColor.lightness > 0.8 ? NSColor(0x000000) : NSColor(0xffffff)
             let layout = TextViewLayout(.initialize(string: titleText, color: color, font: .normal(.text)), maximumNumberOfLines: 1)
-            layout.measure(width: width - 100)
-            
+            let verificationSize = peer.flatMap { PremiumStatusControl.controlSize($0._asPeer(), false, left: true) }
+            let statusSize = peer.flatMap { PremiumStatusControl.controlSize($0._asPeer(), false, left: false) }
+            let badgeWidth = WebAppTitleLayout.reservedWidth(verificationSize: verificationSize, statusSize: statusSize, statusSpacing: 3)
+            layout.measure(width: max(1, width - 100 - badgeWidth))
+
             let urlLayout: TextViewLayout?
             
             if let subtitle = self.external?.subtitle {
@@ -1651,17 +1691,25 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
     private let disposable = MetaDisposable()
     private let externalState = MetaDisposable()
 
+    fileprivate let analyticsOrigin: BrowserAnalyticsOrigin
 
     private var appeared: Bool = false
     
-    public init(data: BrowserTabData, context: (any AccountContextProtocol), arguments: Arguments) {
+    public init(data: BrowserTabData, context: (any AccountContextProtocol), arguments: Arguments, analyticsOrigin: BrowserAnalyticsOrigin) {
         self.data = data
         self.context = context
         self.arguments = arguments
+        self.analyticsOrigin = analyticsOrigin
         super.init()
         self.bar = .init(height: 0)
+        analyticsOrigin.bind(self)
     }
     
+    func inheritAnalyticsOrigin(_ origin: BrowserAnalyticsOrigin) {
+        analyticsOrigin.inherit(origin)
+        analyticsOrigin.bind(self)
+        if let controller { analyticsOrigin.bind(controller) }
+    }
 
     public func contextMenu() -> ContextMenu? {
         return self.controller?.contextMenu()
@@ -1676,11 +1724,11 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
     }
     
     public func add(_ tab: BrowserTabData.Data) -> Bool {
-        return controller?.add(tab) ?? false
+        return analyticsOrigin.perform { controller?.add(tab) ?? false }
     }
     
     func cancelPendingPageActions() {
-        controller?.cancelPendingPageActions()
+        analyticsOrigin.perform { controller?.cancelPendingPageActions() }
     }
 
     deinit {
@@ -1689,6 +1737,8 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
     }
     
     public override func viewDidLoad() {
+        let presentation = analyticsOrigin.context.beginPresentation()
+        defer { presentation.end() }
         super.viewDidLoad()
         
         arguments.setLoadingState(data.unique, .loading)
@@ -1707,8 +1757,8 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
             self.set(controller, animated: true)
             arguments.setLoadingState(data.unique, .none)
         case .mainapp, .simple, .straight, .webapp:
-            let signal = makeWebViewController(context: context, data: data.data, unique: data.unique, makeLinkManager: arguments.makeLinkManager) |> deliverOnMainQueue
-            disposable.set((signal).startStrict(next: { [weak self] controller in
+            let signal = makeWebViewController(context: context, data: data.data, unique: data.unique, analyticsOrigin: analyticsOrigin, makeLinkManager: arguments.makeLinkManager) |> deliverOnMainQueue
+            disposable.set(analyticsOrigin.preserving(signal).startStrict(next: { [weak self] controller in
                 guard let self else {
                     return
                 }
@@ -1750,6 +1800,7 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
     }
     
     private func set(_ controller: (ViewController & BrowserPage), animated: Bool) {
+        analyticsOrigin.bind(controller)
         self.controller = controller
         controller._frameRect = bounds
         if appeared {
@@ -1760,7 +1811,7 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
             controller.viewDidAppear(animated)
         }
         
-        externalState.set((controller.externalState).startStrict(next: { [weak self] state in
+        externalState.set(analyticsOrigin.preserving(controller.externalState).startStrict(next: { [weak self] state in
             guard let self else {
                 return
             }
@@ -1779,11 +1830,13 @@ public final class BrowserLinkManager {
     public let context: (any AccountContextProtocol)
     public let unique: BrowserTabData.Unique
     private weak var arguments: Arguments?
-    fileprivate init(context: (any AccountContextProtocol), window: Window?, unique: BrowserTabData.Unique, arguments: Arguments?) {
+    private let analyticsOrigin: BrowserAnalyticsOrigin?
+    fileprivate init(context: (any AccountContextProtocol), window: Window?, unique: BrowserTabData.Unique, arguments: Arguments?, analyticsOrigin: BrowserAnalyticsOrigin?) {
         self.window = window
         self.context = context
         self.unique = unique
         self.arguments = arguments
+        self.analyticsOrigin = analyticsOrigin
     }
     
     public func back() {
@@ -1793,7 +1846,7 @@ public final class BrowserLinkManager {
         arguments?.closeTab(unique, confirm)
     }
     public func open(_ tab: BrowserTabData.Data) {
-        arguments?.insertTab(tab, nil)
+        arguments?.insertTab(tab, analyticsOrigin, nil)
     }
     
     public func getExternal() -> WebpageModalState? {
@@ -1811,6 +1864,7 @@ public final class WebappBrowserController : ViewController {
     
     private var initialTab: BrowserTabData.Data?
     private var initialUniqueId: BrowserTabData.Unique?
+    private var initialAnalyticsOrigin: BrowserAnalyticsOrigin?
     
     public private(set) var markAsDeinit: Bool = false
     private var visibilityGeneration: UInt64 = 0
@@ -1822,27 +1876,37 @@ public final class WebappBrowserController : ViewController {
     }
     
     public convenience init(context: (any AccountContextProtocol), initialTab: BrowserTabData.Data? = nil) {
-        self.init(context: context, initialTab: initialTab)
+        self.init(context: context, initialTab: initialTab, analyticsContext: nil)
     }
 
+    public convenience init(context: any AccountContextProtocol, initialTab: BrowserTabData.Data? = nil, analyticsContext: AnalyticsContext?) {
+        self.init(context: context, initialTab: initialTab, initialUniqueId: nil, analyticsContext: analyticsContext)
+    }
 
-    public init(context: any AccountContextProtocol, initialTab: BrowserTabData.Data?, initialUniqueId: BrowserTabData.Unique?) {
+    public init(context: any AccountContextProtocol, initialTab: BrowserTabData.Data?, initialUniqueId: BrowserTabData.Unique?, analyticsContext: AnalyticsContext?) {
         self.context = context
         self.initialTab = initialTab
         self.initialUniqueId = initialUniqueId
+        self.initialAnalyticsOrigin = initialTab.map { BrowserAnalyticsOrigin(account: context, data: $0, inherited: analyticsContext) }
         super.init()
+        self.analyticsContext = initialAnalyticsOrigin?.context ?? analyticsContext ?? Analytics.shared.unresolvedContext()
         bar = .init(height: 0)
         _window = WebappBrowser(parent: context.window)
     }
     
-
     public func add(_ tab: BrowserTabData.Data, uniqueId: BrowserTabData.Unique? = nil) {
-        do {
+        add(tab, uniqueId: uniqueId, analyticsContext: nil)
+    }
+
+    public func add(_ tab: BrowserTabData.Data, uniqueId: BrowserTabData.Unique? = nil, analyticsContext: AnalyticsContext?) {
+        let origin = BrowserAnalyticsOrigin(account: context, data: tab, inherited: analyticsContext)
+        origin.perform {
             if let uniqueId, let webpage = webpages[uniqueId] {
+                webpage.inheritAnalyticsOrigin(origin)
                 arguments?.select(uniqueId)
                 _ = webpage.add(tab)
             } else {
-                arguments?.insertTab(tab, uniqueId)
+                arguments?.insertTab(tab, origin, uniqueId)
             }
         }
     }
@@ -2022,7 +2086,8 @@ public final class WebappBrowserController : ViewController {
         
         var getArguments:(()->Arguments?)? = nil
         
-        let insertTab:(BrowserTabData.Data, BrowserTabData.Unique?)->Void = { [weak self] data, uniqueId in
+        let insertTab:(BrowserTabData.Data, BrowserAnalyticsOrigin?, BrowserTabData.Unique?)->Void = { [weak self] data, inheritedOrigin, uniqueId in
+            let origin = BrowserAnalyticsOrigin(account: context, data: data, inherited: (inheritedOrigin ?? self?.current?.analyticsOrigin)?.context)
             
             let unique = uniqueId ?? data.newUniqueId
             
@@ -2037,7 +2102,7 @@ public final class WebappBrowserController : ViewController {
                 (state, insertedData) = state.newTab(data, unique: unique, external: BrowserStateContext.get(context).getExternal(unique))
                 
                 if let insertedData, let arguments = getArguments?() {
-                    let controller = WebpageContainerController(data: insertedData, context: context, arguments: arguments)
+                    let controller = WebpageContainerController(data: insertedData, context: context, arguments: arguments, analyticsOrigin: origin)
                     self?.webpages[unique] = controller
                     
                     updateState { current in
@@ -2046,6 +2111,7 @@ public final class WebappBrowserController : ViewController {
                     BrowserStateContext.get(context).add(.init(tabdata: insertedData))
                     
                 }  else {
+                    self?.webpages[unique]?.inheritAnalyticsOrigin(origin)
                     let added = self?.webpages[unique]?.add(data) ?? false
                     
                     if selectedId == unique, !added {
@@ -2058,7 +2124,7 @@ public final class WebappBrowserController : ViewController {
                 }
             }
             
-            invoke()
+            origin.perform(invoke)
         }
         
         let arguments = Arguments(context: context, add: { control in
@@ -2173,7 +2239,8 @@ public final class WebappBrowserController : ViewController {
             guard self?.markAsDeinit == false, let unique, let data, let controller = self?.webpages[unique] else {
                 return
             }
-            let decision = BrowserDecision()
+            let origin = BrowserAnalyticsOrigin(account: context, data: data.data, inherited: controller.analyticsOrigin.context)
+            let decision = BrowserDecision(origin: origin)
             let invoke: () -> Void = { [weak self, weak controller] in
                 decision.resolve {
                     guard let self, !self.markAsDeinit, let controller, self.webpages[unique] === controller,
@@ -2224,7 +2291,7 @@ public final class WebappBrowserController : ViewController {
                 return current
             }
         }, makeLinkManager: { [weak self] id in
-            return BrowserLinkManager(context: context, window: self?.browser, unique: id, arguments: getArguments?())
+            return BrowserLinkManager(context: context, window: self?.browser, unique: id, arguments: getArguments?(), analyticsOrigin: self?.webpages[id]?.analyticsOrigin)
         }, contextMenu: { [weak self] item in
             let unique = item.unique
             let webpageItems = self?.webpages[item.unique]?.contextMenu()?.contextItems ?? []
@@ -2254,8 +2321,8 @@ public final class WebappBrowserController : ViewController {
                 return menu
             }
             return nil
-        }, insertTab: { data, uniqueId in
-            insertTab(data, uniqueId)
+        }, insertTab: { data, origin, uniqueId in
+            insertTab(data, origin, uniqueId)
         }, shake: { [weak self] unique in
             self?.tabs.shake(unique)
         }, getExternalState: { unique in
@@ -2317,9 +2384,10 @@ public final class WebappBrowserController : ViewController {
         }
         
         if let initialTab {
-            insertTab(initialTab, initialUniqueId)
+            insertTab(initialTab, initialAnalyticsOrigin, initialUniqueId)
             self.initialTab = nil
             self.initialUniqueId = nil
+            self.initialAnalyticsOrigin = nil
         }
         
         publicStateValue.set(statePromise.get() |> map { $0.tabs })
@@ -2332,6 +2400,7 @@ public final class WebappBrowserController : ViewController {
         }
         
         if let tab = tabs.first(where: { $0.selected }), let controller = webpages[tab.unique] {
+            self.analyticsContext = controller.analyticsOrigin.context
             
             if current != controller {
                 controller._frameRect = genericView.contentView.bounds
@@ -2352,6 +2421,7 @@ public final class WebappBrowserController : ViewController {
             }
             self.current = controller
         } else {
+            self.analyticsContext = Analytics.shared.privacyContext(peerId: context.peerId)
             self.current?.viewWillDisappear(animated)
             if let view = self.current?.view {
                 performSubviewRemoval(view, animated: animated)

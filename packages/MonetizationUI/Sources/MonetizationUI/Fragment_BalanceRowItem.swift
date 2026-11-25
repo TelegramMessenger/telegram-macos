@@ -188,7 +188,7 @@ private final class BalanceRowView : GeneralContainableRowView {
             
             let textLayout: TextViewLayout = .init(.initialize(string: text, color: theme.colors.underSelectedColor, font: .normal(.text)), maximumNumberOfLines: 1)
             textLayout.measure(width: width)
-            self.layer?.cornerRadius = 10
+            self.layer?.cornerRadius = 20
             
             self.textView.update(textLayout)
             self.backgroundColor = theme.colors.accent

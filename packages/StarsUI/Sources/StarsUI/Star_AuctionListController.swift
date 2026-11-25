@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class RowItem : GeneralRowItem {
@@ -116,7 +117,7 @@ private final class RowView : GeneralContainableRowView {
         public required init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             addSubview(textView)
-            layer?.cornerRadius = 10
+            layer?.cornerRadius = 20
             scaleOnClick = true
             self.set(background: theme.colors.accent, for: .Normal)
             
@@ -355,6 +356,7 @@ public func Star_AuctionListController(context: (any AccountContextProtocol), ac
         dataSignal: signal,
         title: strings().starAuctionListActiveAuctionsOther(activeState.count)
     )
+    controller.analyticsScreen = .giftsAuctionList
 
     getController = { [weak controller] in
         return controller

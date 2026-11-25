@@ -60,7 +60,7 @@ final class GiftWearAction {
             }
         } else if peer._asPeer() is TelegramUser, peer.id == context.peerId {
             if context.isPremium {
-                signal = Self.acknowledged(context.engine.accountData.setStarGiftStatus(starGift: gift, expirationDate: nil))
+                signal = Self.acknowledged(context.engine.accountData.setStarGiftStatusWithResult(starGift: gift, expirationDate: nil))
             } else {
                 signal = .single(.premiumRequired)
             }

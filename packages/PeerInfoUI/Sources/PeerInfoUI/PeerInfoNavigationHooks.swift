@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -14,19 +15,28 @@ public enum PeerInfoFragmentSubject {
 
 public struct PeerInfoNavigationHooks {
     public var makeGroupsInCommonController: (any AccountContextProtocol, PeerId) -> ViewController = { _, _ in ViewController() }
-    public var makeGroupsInCommonControllerWithContext: ((any AccountContextProtocol, PeerId) -> ViewController)?
-    public func makeGroupsInCommonControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId) -> ViewController {
-        let controller = makeGroupsInCommonControllerWithContext?(context, peerId) ?? makeGroupsInCommonController(context, peerId)
+    public var makeGroupsInCommonControllerWithContext: ((any AccountContextProtocol, PeerId, AnalyticsContext) -> ViewController)?
+    public func makeGroupsInCommonControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, analyticsContext: AnalyticsContext) -> ViewController {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        let controller = makeGroupsInCommonControllerWithContext?(context, peerId, origin) ?? makeGroupsInCommonController(context, peerId)
+        if let current = controller.analyticsContext, current.isExcluded || (!origin.isExcluded && current.scope?.isValid != true) {
+            controller.analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: current)
+        } else {
+            controller.analyticsContext = origin
+        }
         return controller
     }
     public var openQrStudio: (any AccountContextProtocol, PeerId, (() -> NSView?)?) -> Void = { _, _, _ in }
-    public var openQrStudioWithContext: ((any AccountContextProtocol, PeerId, (() -> NSView?)?) -> Void)?
+    public var openQrStudioWithContext: ((any AccountContextProtocol, PeerId, (() -> NSView?)?, AnalyticsContext) -> Void)?
 
-    public func openQrStudioObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ morphSource: (() -> NSView?)?) {
+    public func openQrStudioObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ morphSource: (() -> NSView?)?, analyticsContext: AnalyticsContext) {
         if let openQrStudioWithContext {
-            openQrStudioWithContext(context, peerId, morphSource)
+            openQrStudioWithContext(context, peerId, morphSource, analyticsContext)
         } else {
-            do {
+            let presentation = analyticsContext.beginPresentation()
+            withExtendedLifetime(presentation) {
                 openQrStudio(context, peerId, morphSource)
             }
         }
@@ -47,21 +57,29 @@ public struct PeerInfoNavigationHooks {
     public var makeTonMonetizationController: (any AccountContextProtocol, PeerId, StarsRevenueStatsContext) -> ViewController = { _, _, _ in ViewController() }
     public var showRestrictMember: (any AccountContextProtocol, PeerId, PeerId, ChannelParticipant, @escaping (TelegramChatBannedRights?) -> Void) -> Void = { _, _, _, _, _ in }
     public var showChannelParticipant: (any AccountContextProtocol, PeerId, RenderedChannelParticipant) -> Void = { _, _, _ in }
-    public var showRestrictMemberWithContext: ((any AccountContextProtocol, PeerId, PeerId, ChannelParticipant, @escaping (TelegramChatBannedRights?) -> Void) -> Void)?
-    public func showRestrictMemberObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ memberId: PeerId, _ participant: ChannelParticipant, _ updated: @escaping (TelegramChatBannedRights?) -> Void) {
+    public var showRestrictMemberWithContext: ((any AccountContextProtocol, PeerId, PeerId, ChannelParticipant, @escaping (TelegramChatBannedRights?) -> Void, AnalyticsContext) -> Void)?
+    public func showRestrictMemberObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ memberId: PeerId, _ participant: ChannelParticipant, _ updated: @escaping (TelegramChatBannedRights?) -> Void, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext).restricting(peerId: memberId).restricting(peerId: participant.peerId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let completion: (TelegramChatBannedRights?) -> Void = { rights in
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
             updated(rights)
         }
         if let showRestrictMemberWithContext {
-            showRestrictMemberWithContext(context, peerId, memberId, participant, completion)
+            showRestrictMemberWithContext(context, peerId, memberId, participant, completion, origin)
         } else {
             showRestrictMember(context, peerId, memberId, participant, completion)
         }
     }
-    public var showChannelParticipantWithContext: ((any AccountContextProtocol, PeerId, RenderedChannelParticipant) -> Void)?
-    public func showChannelParticipantObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ participant: RenderedChannelParticipant) {
+    public var showChannelParticipantWithContext: ((any AccountContextProtocol, PeerId, RenderedChannelParticipant, AnalyticsContext) -> Void)?
+    public func showChannelParticipantObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ participant: RenderedChannelParticipant, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext).restricting(peerId: participant.peer.id).restricting(peerId: participant.participant.peerId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showChannelParticipantWithContext {
-            showChannelParticipantWithContext(context, peerId, participant)
+            showChannelParticipantWithContext(context, peerId, participant, origin)
         } else {
             showChannelParticipant(context, peerId, participant)
         }
@@ -70,10 +88,13 @@ public struct PeerInfoNavigationHooks {
     public var makeChannelBlacklistController: (any AccountContextProtocol, PeerId) -> ViewController = { _, _ in ViewController() }
     public var makeChannelPermissionsController: (any AccountContextProtocol, PeerId) -> ViewController = { _, _ in ViewController() }
     public var showUserTagInfo: (any AccountContextProtocol, String, String, String, AdminBadgeType, Bool) -> Void = { _, _, _, _, _, _ in }
-    public var showUserTagInfoWithContext: ((any AccountContextProtocol, String, String, String, AdminBadgeType, Bool) -> Void)?
-    public func showUserTagInfoObserved(_ context: any AccountContextProtocol, _ tag: String, _ authorName: String, _ groupName: String, _ badgeType: AdminBadgeType, _ canEditRank: Bool) {
+    public var showUserTagInfoWithContext: ((any AccountContextProtocol, String, String, String, AdminBadgeType, Bool, AnalyticsContext) -> Void)?
+    public func showUserTagInfoObserved(_ context: any AccountContextProtocol, _ tag: String, _ authorName: String, _ groupName: String, _ badgeType: AdminBadgeType, _ canEditRank: Bool, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showUserTagInfoWithContext {
-            showUserTagInfoWithContext(context, tag, authorName, groupName, badgeType, canEditRank)
+            showUserTagInfoWithContext(context, tag, authorName, groupName, badgeType, canEditRank, origin)
         } else {
             showUserTagInfo(context, tag, authorName, groupName, badgeType, canEditRank)
         }

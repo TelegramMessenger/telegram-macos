@@ -378,7 +378,9 @@ public final class GroupCallControlsView : View {
         leftToken = leftButton1.set(handler: { [weak self, weak callState] _ in
             if let callState = callState {
                 if callState.isStream {
-                    self?.arguments?.message(nil)
+                    ModalMorphContextSource.withSource({ [weak self] in self?.leftButton1.modalMorphSource }) {
+                        self?.arguments?.message(nil)
+                    }
                 } else {
                     switch callState.mode {
                     case .video:
@@ -388,7 +390,9 @@ public final class GroupCallControlsView : View {
                             self?.arguments?.cancelShareVideo()
                         }
                     case .voice:
-                        self?.arguments?.message(nil)
+                        ModalMorphContextSource.withSource({ [weak self] in self?.leftButton1.modalMorphSource }) {
+                            self?.arguments?.message(nil)
+                        }
                     }
                 }
             }
@@ -406,7 +410,9 @@ public final class GroupCallControlsView : View {
         
         rightButton1?.removeAllHandlers()
         rightButton1?.set(handler: { [weak self] _ in
-            self?.arguments?.message(nil)
+            ModalMorphContextSource.withSource({ [weak self] in self?.rightButton1?.modalMorphSource }) {
+                self?.arguments?.message(nil)
+            }
         }, for: .SingleClick)
 
         var backgroundState: VoiceChatActionButtonBackgroundView.State

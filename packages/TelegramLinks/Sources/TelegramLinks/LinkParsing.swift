@@ -6,11 +6,11 @@ import MtProtoKit
 import Colors
 import Strings
 
-private func hTmeParseDuration(_ durationStr: String) -> Int {
+private func hTmeParseDuration(_ durationStr: String) -> Int32? {
     let pattern = "^(?:(\\d+)h)?(?:(\\d+)m)?(?:(\\d+)s)?$"
 
     guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-        return Int(durationStr) ?? 0
+        return Int32(exactly: Int(durationStr) ?? 0)
     }
 
     let range = NSRange(durationStr.startIndex..., in: durationStr)
@@ -19,22 +19,24 @@ private func hTmeParseDuration(_ durationStr: String) -> Int {
         let minutesRange = match.range(at: 2)
         let secondsRange = match.range(at: 3)
 
-        func intValue(_ nsRange: NSRange) -> Int {
+        func intValue(_ nsRange: NSRange) -> Int? {
             guard nsRange.location != NSNotFound,
                   let substringRange = Range(nsRange, in: durationStr) else {
                 return 0
             }
-            return Int(durationStr[substringRange]) ?? 0
+            return Int32(durationStr[substringRange]).map(Int.init)
         }
 
-        let hours = intValue(hoursRange)
-        let minutes = intValue(minutesRange)
-        let seconds = intValue(secondsRange)
+        guard let hours = intValue(hoursRange),
+              let minutes = intValue(minutesRange),
+              let seconds = intValue(secondsRange) else {
+            return nil
+        }
 
-        return hours * 3600 + minutes * 60 + seconds
+        return Int32(exactly: hours * 3600 + minutes * 60 + seconds)
     }
 
-    return Int(durationStr) ?? 0
+    return Int32(exactly: Int(durationStr) ?? 0)
 }
 
 public let telegram_me:[String] = ["telegram.me/","telegram.dog/","t.me/"]
@@ -57,6 +59,7 @@ private let keyURLSet = "set";
 private let keyURLText = "text";
 private let keyURLStart = "start";
 private let keyURLVoiceChat = "voicechat";
+private let keyURLVideoChat = "videochat";
 private let keyURLStartattach = "startattach";
 private let keyURLAttach = "attach";
 private let keyURLStartGroup = "startgroup";
@@ -455,7 +458,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                 return .inviteBotToGroup(link: urlString, username: username, action: .start(parameter: value, behavior: .automatic), rights: rights, isChannel: key == keyURLStartChannel)
                             }
                             break loop;
-                        case keyURLVoiceChat:
+                        case keyURLVoiceChat, keyURLVideoChat, keyURLLivestream:
                             action = .joinVoiceChat(value)
                             break loop;
                         case keyURLAttach:
@@ -471,7 +474,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                             break
                         }
                     }
-                    if vars.isEmpty && userAndVariables[1] == keyURLVoiceChat {
+                    if vars.isEmpty && [keyURLVoiceChat, keyURLVideoChat, keyURLLivestream].contains(userAndVariables[1]) {
                         action = .joinVoiceChat(nil)
                     }
                 }
@@ -579,11 +582,8 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                     let forceProfile = false
 
                                     var action: ParsedChatLinkAction? = nil
-                                    if let t = params[keyURLTimecode] {
-                                        let timemark = hTmeParseDuration(t)
-                                        if Int(timemark) < Int32.max {
-                                            action = .openMedia(Int32(timemark))
-                                        }
+                                    if let t = params[keyURLTimecode], let timemark = hTmeParseDuration(t) {
+                                        action = .openMedia(timemark)
                                     }
                                     if let optionId = params["option"] {
                                         let padded = optionId.padding(toLength: ((optionId.count + 3) / 4) * 4, withPad: "=", startingAt: 0)
@@ -628,9 +628,8 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                             var action: ParsedChatLinkAction? = nil
 
                             if let t = params[keyURLTimecode] {
-                                let timemark = Double(hTmeParseDuration(t))
-                                if Int(timemark) < Int32.max {
-                                    action = .openMedia(Int32(timemark))
+                                if let timemark = hTmeParseDuration(t) {
+                                    action = .openMedia(timemark)
                                 }
                             } else if (userAndPost.count == 2 && post == nil) || (userAndPost.count == 3 && params[keyURLStartapp] != nil) {
                                 var appname = userAndPost[1]
@@ -642,11 +641,8 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                 }
                             }
 
-                            if let t = params[keyURLTimecode], action == nil {
-                                let timemark = hTmeParseDuration(t)
-                                if Int(timemark) < Int32.max {
-                                    action = .openMedia(Int32(timemark))
-                                }
+                            if let t = params[keyURLTimecode], action == nil, let timemark = hTmeParseDuration(t) {
+                                action = .openMedia(timemark)
                             }
 
                             if let optionId = params["option"] {
@@ -735,7 +731,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                     let rights = vars[keyURLAdmin]
                                     return .inviteBotToGroup(link: urlString, username: username, action: .start(parameter: value, behavior: .none), rights: rights, isChannel: key == keyURLStartChannel)
                                 }
-                            case keyURLVoiceChat:
+                            case keyURLVoiceChat, keyURLVideoChat, keyURLLivestream:
                                 action = .joinVoiceChat(value)
                                 break loop
                             case keyURLAttach:
@@ -771,7 +767,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                         }
                         if action == nil && emptyVars.contains(keyURLStartapp) {
                             action = .makeWebview(appname: "", command: nil)
-                        } else if action == nil && emptyVars.contains(keyURLVoiceChat) {
+                        } else if action == nil && (emptyVars.contains(keyURLVoiceChat) || emptyVars.contains(keyURLVideoChat) || emptyVars.contains(keyURLLivestream)) {
                             action = .joinVoiceChat(nil)
                         } else if action == nil, vars[keyURLStartattach] != nil || vars[keyURLAttach] != nil {
                             let choose = vars[keyURLChoose]?.split(separator: "+").compactMap { String($0) }

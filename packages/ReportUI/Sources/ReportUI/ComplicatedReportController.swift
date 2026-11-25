@@ -10,6 +10,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 
 public struct ComplicatedReport : Equatable {
@@ -156,6 +157,7 @@ private func ReportController(context: (any AccountContextProtocol), title: Stri
     }
     
     let controller = InputDataController(dataSignal: signal, title: header, hasDone: false)
+    controller.analyticsScreen = .reportReason
     
     
     controller.onDeinit = {
@@ -204,6 +206,7 @@ private func ReportController(context: (any AccountContextProtocol), title: Stri
     }
     
     let controller = InputDataController(dataSignal: signal, title: title, hasDone: false)
+    controller.analyticsScreen = .reportOption
     controller._frameRect = modalController.frame.size.bounds
     controller.bar = .init(height: 0)
     
@@ -295,6 +298,7 @@ private func ReportDetailsController(context: (any AccountContextProtocol), opti
     }
     
     let controller = InputDataController(dataSignal: signal, title: title)
+    controller.analyticsScreen = .reportDetails
     controller._frameRect = modalController.frame.size.bounds
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.chatNavigationBack, handler: { [weak modalController] in

@@ -74,10 +74,8 @@ class ChatSearchView: SearchView {
         didSet {
             if countValue.total > 0 {
                 addSubview(countView)
-                updateClearVisibility(false)
             } else {
                 countView.removeFromSuperview()
-                updateClearVisibility(true)
             }
             updateLocalizationAndTheme(theme: theme)
             self.needsLayout = true
@@ -123,6 +121,16 @@ class ChatSearchView: SearchView {
         }
         
         super.updateLocalizationAndTheme(theme: theme)
+        updateClearButton()
+    }
+
+    private func updateClearButton() {
+        updateClearVisibility(state == .Focus && !isEmpty && countView.superview == nil)
+    }
+
+    override func change(state: SearchFieldState, _ animated: Bool) {
+        super.change(state: state, animated)
+        updateClearButton()
     }
     
     deinit {
@@ -187,6 +195,7 @@ class ChatSearchView: SearchView {
         default:
             break
         }
+        updateClearButton()
     }
     
     override var placeholderTextInset:CGFloat {

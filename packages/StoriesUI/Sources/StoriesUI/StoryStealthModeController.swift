@@ -188,7 +188,7 @@ private final class StoryStealthModeView : Control {
         button.set(background: theme.colors.accent, for: .Normal)
         
         button.sizeToFit(.zero, NSMakeSize(340, 40), thatFit: true)
-        button.layer?.cornerRadius = 10
+        button.layer?.cornerRadius = 20
         
     }
     

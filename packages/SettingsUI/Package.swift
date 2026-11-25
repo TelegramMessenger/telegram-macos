@@ -3,7 +3,7 @@
 import PackageDescription
 
 let deps: [(String, String)] = [
-
+    ("AppAnalytics", "../AppAnalytics"),
     ("AlertsUI", "../AlertsUI"),
     ("AvatarEditorUI", "../AvatarEditorUI"),
     ("AvatarUI", "../AvatarUI"),
@@ -51,6 +51,7 @@ let package = Package(
     platforms: [.macOS(.v10_13)],
     products: [
         .library(name: "SettingsUI", targets: ["SettingsUI"]),
+        .library(name: "AccountResetSupport", targets: ["AccountResetSupport"]),
     ],
     dependencies: [
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
@@ -61,10 +62,19 @@ let package = Package(
         .target(
             name: "SettingsUI",
             dependencies: [
+                "AccountResetSupport",
                 .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
             path: "Sources/SettingsUI"),
+        .target(
+            name: "AccountResetSupport",
+            dependencies: [
+                .product(name: "SwiftSignalKit", package: "SSignalKit"),
+                .product(name: "TelegramCore", package: "TelegramCore"),
+                .product(name: "Postbox", package: "Postbox"),
+            ],
+            path: "Sources/AccountResetSupport"),
     ]
 )

@@ -57,7 +57,7 @@ private struct DraftPeerId {
 private struct DraftLocation { let threadId: Int64? }
 private enum DraftKind { case welcomeMessages }
 private struct DraftContents { let kind: DraftKind }
-private struct DraftMode { let customChatContents: DraftContents? }
+private struct DraftMode { let customChatContents: DraftContents?; var customChatLink: DraftContents? = nil }
 private final class ComposerPreparationFixture { var resets = 0; func reset() { resets += 1 } }
 private final class ChatInteraction {
     let composerForwardPreparation = ComposerPreparationFixture()
@@ -281,54 +281,67 @@ final class DeferredSendTests: XCTestCase {
 }
 
 
+private final class SubmissionFixture {
+    var discards = 0
+    func discard() { discards += 1 }
+}
+
 private final class SendCallbackFixture {
     var sends = 0
-    func dateSelected(_ deferredSendAction: ChatDeferredSendAction?) {
+    func dateSelected(_ deferredSendAction: ChatDeferredSendAction?, submission: SubmissionFixture?) {
         __DATE_CALLBACK_GUARD__
         sends += 1
     }
-    func confirmed(_ confirmationAction: ChatDeferredSendAction) {
+    func confirmed(_ confirmationAction: ChatDeferredSendAction, submission: SubmissionFixture?) {
         __CONFIRMATION_GUARD__
         sends += 1
     }
 }
 
 final class DeferredSendCallbackTests: XCTestCase {
-    func testStaleDateCannotSend() {
+    func testStaleDateCannotSendAndDiscardsObservationOnce() {
         let interaction = InteractionFixture()
         let callback = SendCallbackFixture()
+        let submission = SubmissionFixture()
         let action = interaction.captureDeferredSendAction()
         interaction.update { $0.interfaceState.replyMessageId = 9 }
-        callback.dateSelected(action)
-        callback.dateSelected(action)
+        callback.dateSelected(action, submission: submission)
+        callback.dateSelected(action, submission: submission)
         XCTAssertEqual(callback.sends, 0)
+        XCTAssertEqual(submission.discards, 1)
     }
 
-    func testDuplicateDateDoesNotSendAgain() {
+    func testDuplicateDateDoesNotSendAgainOrDiscardAcceptedObservation() {
         let interaction = InteractionFixture()
         let callback = SendCallbackFixture()
+        let submission = SubmissionFixture()
         let action = interaction.captureDeferredSendAction()
-        callback.dateSelected(action)
+        callback.dateSelected(action, submission: submission)
         interaction.update { $0.effectiveInput.inputText = "next message" }
-        callback.dateSelected(action)
+        callback.dateSelected(action, submission: submission)
         XCTAssertEqual(callback.sends, 1)
+        XCTAssertEqual(submission.discards, 0)
     }
 
     func testDraftChangedDuringConfirmationCannotSend() {
         let interaction = InteractionFixture()
         let callback = SendCallbackFixture()
+        let submission = SubmissionFixture()
         let action = interaction.captureDeferredSendAction()
         interaction.update { $0.effectiveInput.inputText = "changed after date selection" }
-        callback.confirmed(action)
+        callback.confirmed(action, submission: submission)
         XCTAssertEqual(callback.sends, 0)
+        XCTAssertEqual(submission.discards, 1)
     }
 
-    func testDuplicateConfirmationDoesNotSendAgain() {
+    func testDuplicateConfirmationDoesNotDiscardAcceptedObservation() {
         let interaction = InteractionFixture()
         let callback = SendCallbackFixture()
+        let submission = SubmissionFixture()
         let action = interaction.captureDeferredSendAction()
-        callback.confirmed(action)
-        callback.confirmed(action)
+        callback.confirmed(action, submission: submission)
+        callback.confirmed(action, submission: submission)
         XCTAssertEqual(callback.sends, 1)
+        XCTAssertEqual(submission.discards, 0)
     }
 }

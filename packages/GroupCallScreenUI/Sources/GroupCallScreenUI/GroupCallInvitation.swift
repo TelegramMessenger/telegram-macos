@@ -469,14 +469,35 @@ public final class GroupCallInviteMembersBehaviour : SelectPeersBehavior {
 }
 
 public func GroupCallAddmembers(_ data: GroupCallUIController.UIData, window: Window) -> Signal<([PeerId], Bool), NoError> {
+    guard data.call.isConference else {
+        return groupCallAddmembers(data, window: window, conferenceLimit: nil)
+    }
+    return (combineLatest(data.call.members, data.call.invitedPeers) |> take(1) |> deliverOnMainQueue) |> mapToSignal { members, invited in
+        let limit: Int32 = data.call.accountContext.appConfiguration.getGeneralValue("conference_call_size_limit", orElse: 10)
+        let participants = members?.participants.compactMap { participant -> PeerId? in
+            if case let .peer(id) = participant.id {
+                return id
+            }
+            return nil
+        } ?? []
+        let remaining = conferenceInvitationCapacity(limit: Int(limit), participantCount: members?.totalCount ?? 1, participantPeerIds: participants, invitedPeerIds: invited.map { $0.id })
+        guard remaining > 0 else {
+            alert(for: window, info: strings().voiceChatChatFullAlertText)
+            return .complete()
+        }
+        return groupCallAddmembers(data, window: window, conferenceLimit: Int32(remaining))
+    }
+}
+
+private func groupCallAddmembers(_ data: GroupCallUIController.UIData, window: Window, conferenceLimit: Int32?) -> Signal<([PeerId], Bool), NoError> {
     
     let behaviour: SelectPeersBehavior
     let title: String
     let limit: Int32
     if data.call.isConference {
         title = strings().voiceChatInviteConferenceTitle
-        behaviour = GroupCallInviteMembersBehaviour(data: data, window: window, isConference: true, limit: 1)
-        limit = 1
+        limit = conferenceLimit ?? 1
+        behaviour = GroupCallInviteMembersBehaviour(data: data, window: window, isConference: true, limit: limit)
     } else if let peer = data.call.peer, peer.isChannel {
         title = strings().voiceChatInviteChannelsTitle
         behaviour = GroupCallInviteMembersBehaviour(data: data, window: window, isConference: false, limit: 100)

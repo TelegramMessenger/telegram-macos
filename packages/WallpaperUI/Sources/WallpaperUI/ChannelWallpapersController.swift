@@ -17,6 +17,7 @@ import AlertsUI
 import FilePanels
 import TelegramMediaUtils
 import DiceCache
+import AppAnalytics
 
 
 private let _id_choose = InputDataIdentifier("_id_choose")
@@ -461,6 +462,7 @@ public func ChannelWallpapersController(context: any AccountContextProtocol, pee
     }
     
     let controller = InputDataController(dataSignal: signal, title: isGroup ? strings().channelWallpaperTitleGroup : strings().channelWallpaperTitle)
+    controller.analyticsScreen = .peerInfoWallpaper
     
     controller.validateData = { _ in
         callback(stateValue.with { $0.selected?.wallpaper })

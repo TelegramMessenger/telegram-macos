@@ -909,7 +909,6 @@ public struct TelegramThemeHooks {
     public let chatGroupToggleUnselected: (NSColor, NSColor) -> CGImage
     public let setDefaultTheme: (Window?) -> Void
     public let liteMode: () -> LiteMode
-    public let purgeLottieCache: () -> Void
     public let darkAppearance: () -> TelegramPresentationTheme
     public let liveStreamBadgeColor: () -> NSColor
 
@@ -921,7 +920,6 @@ public struct TelegramThemeHooks {
                 chatGroupToggleUnselected: @escaping (NSColor, NSColor) -> CGImage,
                 setDefaultTheme: @escaping (Window?) -> Void,
                 liteMode: @escaping () -> LiteMode,
-                purgeLottieCache: @escaping () -> Void = {},
                 darkAppearance: @escaping () -> TelegramPresentationTheme,
                 liveStreamBadgeColor: @escaping () -> NSColor) {
         self.image = image
@@ -932,7 +930,6 @@ public struct TelegramThemeHooks {
         self.chatGroupToggleUnselected = chatGroupToggleUnselected
         self.setDefaultTheme = setDefaultTheme
         self.liteMode = liteMode
-        self.purgeLottieCache = purgeLottieCache
         self.darkAppearance = darkAppearance
         self.liveStreamBadgeColor = liveStreamBadgeColor
     }

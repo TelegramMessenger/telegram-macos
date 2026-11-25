@@ -25,6 +25,9 @@ public struct MTMathRenderedFormula {
 }
 
 public enum MTMathRenderer {
+    static let maximumRenderedDimension = CGFloat(8192)
+    static let maximumRenderedArea = CGFloat(4096 * 1024)
+
     public static func render(latex: String, fontSize: CGFloat, textColor: MTColor, mode: MTMathUILabelMode = .display) -> MTMathRenderedFormula? {
         var error: NSError?
         guard let mathList = MTMathListBuilder.build(fromString: latex, error: &error), error == nil else {
@@ -60,6 +63,9 @@ public enum MTMathRenderer {
 
         let width = max(1.0, ceil(displayList.width))
         let height = max(1.0, ceil(displayList.ascent + displayList.descent))
+        guard width.isFinite, height.isFinite, width <= maximumRenderedDimension, height <= maximumRenderedDimension, width * height <= maximumRenderedArea else {
+            return nil
+        }
         let size = CGSize(width: width, height: height)
         displayList.position = CGPoint(x: 0.0, y: displayList.descent)
 

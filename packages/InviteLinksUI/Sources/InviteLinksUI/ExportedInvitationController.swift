@@ -22,6 +22,7 @@ import SwiftSignalKit
 import Postbox
 import TelegramCore
 import InlineStickerLayer
+import AppAnalytics
 
 private final class SubscriptionFeeRowItem: GeneralRowItem {
     private let pricing: StarsSubscriptionPricing
@@ -377,7 +378,7 @@ public func ExportedInvitationController(invitation: _ExportedInvitation, peerId
     }, editLink: { [weak manager] link in
         getModalController?()?.close()
         showModal(with: ClosureInviteLinkController(context: accountContext, peerId: peerId, mode: .edit(link), isChannel: isChannel, save: { [weak manager] updated in
-            let signal = manager?.editPeerExportedInvitation(link: link, title: updated.title, expireDate: updated.date == .max ? 0 : updated.date + Int32(Date().timeIntervalSince1970), usageLimit: updated.count == .max ? 0 : updated.count)
+            let signal = manager?.editPeerExportedInvitation(link: link, title: updated.editedTitle, expireDate: updated.editedExpireDate, usageLimit: updated.editedUsageLimit, requestNeeded: updated.editedRequestNeeded)
             if let signal = signal {
                 _ = showModalProgress(signal: signal, for: accountContext.window).start()
             }
@@ -410,6 +411,7 @@ public func ExportedInvitationController(invitation: _ExportedInvitation, peerId
 
     
     let controller = InputDataController(dataSignal: dataSignal, title: invitation.title ?? strings().exportedInvitationTitle)
+    controller.analyticsScreen = .peerInfoInviteLinksLink
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: {
         getModalController?()?.close()

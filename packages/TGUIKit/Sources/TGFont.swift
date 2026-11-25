@@ -2,6 +2,8 @@ import Cocoa
 import AppKit
 
 private var caches: [FontCacheKey: NSFont] = [:]
+private let avatarCacheLock = NSLock()
+private var avatarCache: [CGFloat: NSFont] = [:]
 
 
 public struct FontCacheKey : Hashable {
@@ -169,6 +171,20 @@ public extension NSFont {
         if let font = caches[.init(type: .avatar, size: size)] {
             return font
         }
+        avatarCacheLock.lock()
+        let cached = avatarCache[size]
+        avatarCacheLock.unlock()
+        if let cached {
+            return cached
+        }
+        let font = makeAvatar(size)
+        avatarCacheLock.lock()
+        avatarCache[size] = font
+        avatarCacheLock.unlock()
+        return font
+    }
+
+    private static func makeAvatar(_ size: FontSize) -> NSFont {
         if #available(OSX 10.15, *) {
             if let descriptor = NSFont.boldSystemFont(ofSize: size).fontDescriptor.withDesign(.rounded), let font = NSFont(descriptor: descriptor, size: size) {
                 return font

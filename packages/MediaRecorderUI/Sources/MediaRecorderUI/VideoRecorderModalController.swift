@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import Foundation
 import TGUIKit
 import TelegramCore
@@ -39,6 +40,7 @@ public class VideoRecorderModalController: ModalViewController {
     }
 
     public let sendMedia:([MediaSenderContainer])->Void
+    public var sendRecordedMedia: (([MediaSenderContainer], AnalyticsRecordingRequest?) -> Void)?
     public let resetState:()->Void
     public init(state: ChatRecordingState, pipeline: VideoRecorderPipeline, sendMedia:@escaping([MediaSenderContainer])->Void, resetState:@escaping()->Void) {
         self.sendMedia = sendMedia
@@ -46,6 +48,7 @@ public class VideoRecorderModalController: ModalViewController {
         self.pipeline = pipeline
         self.resetState = resetState
         super.init(frame: NSMakeRect(0, 0, 300, 300))
+        self.analyticsContext = state.analyticsContext ?? Analytics.shared.unresolvedContext()
         bar = .init(height: 0)
     }
 
@@ -84,11 +87,14 @@ public class VideoRecorderModalController: ModalViewController {
                     strongSelf.genericView.updateForPreview(path, preview: thumb)
                     strongSelf.pipeline.stopCapture()
                 case .recording:
+                    strongSelf.state.analyticsRecordingJourney?.started()
+                    strongSelf.state.analyticsRecordingJourney?.resumed()
                     strongSelf.isPaused = false
                     strongSelf.genericView.updateResumed()
                     strongSelf.genericView.didStartedRecording()
                     strongSelf.runTimer()
                 case let .paused(info):
+                    strongSelf.state.analyticsRecordingJourney?.paused()
                     strongSelf.isPaused = true
                     strongSelf.countdownDisposable.set(nil)
                     strongSelf.genericView.updatePaused(info.path)
@@ -99,6 +105,7 @@ public class VideoRecorderModalController: ModalViewController {
                     strongSelf.pipeline.stopCapture()
                     strongSelf.close()
                 case .failed:
+                    strongSelf.state.analyticsRecordingJourney?.fail(.preparation)
                     strongSelf.countdownDisposable.set(nil)
                     strongSelf.pipeline.stopCapture()
                     strongSelf.resetState()
@@ -126,11 +133,18 @@ public class VideoRecorderModalController: ModalViewController {
             self.genericView.updateProgress(Float(duration / VideoRecorderPipeline.videoMessageMaxDuration))
             if duration >= VideoRecorderPipeline.videoMessageMaxDuration, !self.isPaused, !self.didRequestAutomaticSubmission {
                 self.didRequestAutomaticSubmission = true
+                let request = self.state.analyticsRecordingJourney?.prepareSubmission(via: .durationLimit)
+                let sendRecordedMedia = self.sendRecordedMedia
                 let sendMedia = self.sendMedia
                 self.stopAndMakeRecordedVideo()
-                let data = self.state.contextBoundData
+                let data = request?.observingPreparation(self.state.contextBoundData) ?? self.state.contextBoundData
                 _ = data.start(next: { medias in
-                    sendMedia(medias)
+                    if let sendRecordedMedia {
+                        sendRecordedMedia(medias, request)
+                    } else {
+                        request?.end()
+                        sendMedia(medias)
+                    }
                 })
                 self.resetState()
                 self.close()

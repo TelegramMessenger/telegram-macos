@@ -267,10 +267,93 @@ final class ChatWalletTransferSubmoduleCompatibilityTests: XCTestCase {
         ])
     }
 
+    private func rawBlock(_ path: String, startingAt signature: String) throws -> String {
+        let text = try String(contentsOf: repositoryRoot().appendingPathComponent(path), encoding: .utf8)
+        let start = try XCTUnwrap(text.range(of: signature))
+        let open = try XCTUnwrap(text[start.lowerBound...].firstIndex(of: "{"))
+        var depth = 0
+        for index in text[open...].indices {
+            if text[index] == "{" { depth += 1 }
+            if text[index] == "}" { depth -= 1 }
+            if depth == 0 { return String(text[start.lowerBound...index]) }
+        }
+        throw NSError(domain: "UnbalancedSubmoduleFixture", code: 1)
+    }
+
+    private func executeSubmoduleFixture(_ source: String) throws -> [String: Bool] {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ChatWalletCompatibility-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appendingPathComponent("main.swift")
+        let binary = directory.appendingPathComponent("fixture")
+        try source.write(to: input, atomically: true, encoding: .utf8)
+        func run(_ executable: URL, _ arguments: [String]) throws -> Data {
+            let process = Process()
+            let output = Pipe()
+            process.executableURL = executable
+            process.arguments = arguments
+            process.standardOutput = output
+            process.standardError = output
+            try process.run()
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                XCTFail(String(data: data, encoding: .utf8) ?? "Fixture failed")
+                throw NSError(domain: "SubmoduleFixtureFailed", code: Int(process.terminationStatus))
+            }
+            return data
+        }
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent("ChatWalletCompatibilityModuleCache")
+        _ = try run(URL(fileURLWithPath: "/usr/bin/xcrun"), ["swiftc", "-module-cache-path", cache.path, input.path, "-o", binary.path])
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: run(binary, [])) as? [String: Bool])
+    }
+
     func testSubmoduleTransferCardAcceptsSwipeToReply() throws {
-        let shouldBegin = try block(Self.bubbleItemPath, startingAt: "replyRecognizer.shouldBegin = { [weak self] in")
-        XCTAssertEqual(occurrences(of: "} else if case .gramTransfer = media.action {", in: shouldBegin), 1)
-        XCTAssertEqual(occurrences(of: "let action = item.controllerInteraction.canSetupReply(item.message)", in: shouldBegin), 1)
+        let shouldBegin = try rawBlock(Self.bubbleItemPath, startingAt: "replyRecognizer.shouldBegin =")
+        let fixture = """
+        import Foundation
+        enum Action { case phoneCall, conferenceCall, gramTransfer, other }
+        class TelegramMediaAction { let action: Action; init(_ action: Action) { self.action = action } }
+        class TelegramMediaExpiredContent {}
+        enum ReplyAction { case none, reply }
+        class View { func convert(_ point: CGPoint, to view: View) -> CGPoint { point } }
+        class ContentNode { let view = View(); var claimed = false; func claimsHorizontalDrag(at point: CGPoint) -> Bool { claimed } }
+        struct MessageId { let peerId: Int }
+        class Message { var media: [Any] = []; let id = MessageId(peerId: 1) }
+        struct Content { let firstMessage: Message }
+        struct Thread { let isChannelPost: Bool; let peerId: Int }
+        enum Location { case peer, replyThread(Thread) }
+        class Interaction { var canReply = true; func canSetupReply(_ message: Message) -> ReplyAction { canReply ? .reply : .none } }
+        class Item {
+            let message = Message(); var content: Content { Content(firstMessage: message) }
+            let controllerInteraction = Interaction(); var chatLocation = Location.peer
+        }
+        class Recognizer { var shouldBegin: (() -> Bool)?; func location(in view: View) -> CGPoint { CGPoint(x: 0, y: 0) } }
+        class Node {
+            var item: Item? = Item(); var selectionNode: Int?; let view = View(); let contentNodes = [ContentNode()]
+            var currentSwipeAction = ReplyAction.none; let recognizer = Recognizer()
+            func configure() { let replyRecognizer = self.recognizer; \(shouldBegin) }
+        }
+        func permitted(_ media: [Any], canReply: Bool = true, selected: Bool = false, claimed: Bool = false, foreignPost: Bool = false) -> Bool {
+            let node = Node(); node.item?.message.media = media; node.item?.controllerInteraction.canReply = canReply
+            node.selectionNode = selected ? 1 : nil; node.contentNodes[0].claimed = claimed
+            if foreignPost { node.item?.chatLocation = .replyThread(Thread(isChannelPost: true, peerId: 2)) }
+            node.configure(); return node.recognizer.shouldBegin?() ?? false
+        }
+        let values: [String: Bool] = [
+            "transfer": permitted([TelegramMediaAction(.gramTransfer)]),
+            "phone": permitted([TelegramMediaAction(.phoneCall)]),
+            "conference": permitted([TelegramMediaAction(.conferenceCall)]),
+            "otherService": permitted([TelegramMediaAction(.other)]),
+            "expired": permitted([TelegramMediaExpiredContent()]),
+            "replyDenied": permitted([TelegramMediaAction(.gramTransfer)], canReply: false),
+            "selection": permitted([TelegramMediaAction(.gramTransfer)], selected: true),
+            "claimedDrag": permitted([TelegramMediaAction(.gramTransfer)], claimed: true),
+            "foreignChannelPost": permitted([TelegramMediaAction(.gramTransfer)], foreignPost: true)
+        ]
+        print(String(data: try! JSONSerialization.data(withJSONObject: values, options: [.sortedKeys]), encoding: .utf8)!)
+        """
+        XCTAssertEqual(try executeSubmoduleFixture(fixture), ["transfer": true, "phone": true, "conference": true, "otherService": false, "expired": false, "replyDenied": false, "selection": false, "claimedDrag": false, "foreignChannelPost": false])
         let gesture = try block(Self.bubbleItemPath, startingAt: "@objc private func swipeToReplyGesture(_ recognizer: ChatSwipeToReplyRecognizer) {")
         XCTAssertEqual(occurrences(of: "gestureRecognized = translation.x < -swipeOffset", in: gesture), 1)
         XCTAssertEqual(occurrences(of: "case .reply: item.controllerInteraction.setupReply(item.message.id)", in: gesture), 1)
@@ -336,9 +419,54 @@ final class ChatWalletTransferSubmoduleCompatibilityTests: XCTestCase {
         try assertSource(Self.historyListPath, contains: [
             "if self.canReadHistoryValue { self.forEachVisibleMessageItemNode { itemNode in itemNode.unreadMessageRangeUpdated() } }"
         ])
-        try assertSource(Self.coordinatorPath, contains: [
-            "guard self.isApplicationActive, !self.seenArrivals.contains(message.id), let interaction = self.controller?.controllerInteraction, interaction.canReadHistory,"
-        ])
+        let eligibility = try rawBlock(Self.coordinatorPath, startingAt: "private var canPlayArrivals: Bool")
+        let request = try rawBlock(Self.coordinatorPath, startingAt: "func requestArrival(_ message: EngineRawMessage)")
+        let fixture = """
+        import Foundation
+        struct MessageId: Hashable { let peerId: Int; let namespace: Int; let id: Int }
+        struct UnreadMessageRangeKey: Hashable { let peerId: Int; let namespace: Int }
+        struct Flags: OptionSet { let rawValue: Int; static let Incoming = Flags(rawValue: 1) }
+        struct EngineRawMessage { let id: MessageId; var flags: Flags = [.Incoming] }
+        enum Subject { case regular, previewing }
+        enum Mode { case standard(Subject) }
+        class Interaction {
+            var unreadMessageRange = [UnreadMessageRangeKey(peerId: 1, namespace: 0): 1...99]
+            var freshWalletTransferMessageIds = Set<MessageId>()
+        }
+        class Controller { var walletTransferAnimationsVisible = true; var canReadHistoryValue = true; var mode = Mode.standard(.regular); let controllerInteraction = Interaction() }
+        enum UIAccessibility { static var isReduceMotionEnabled = false }
+        struct Arrival { let message: EngineRawMessage; let rise: Bool }
+        class Coordinator {
+            var controller: Controller? = Controller(); var isApplicationActive = true
+            var seenArrivals = Set<MessageId>(); var arrivals: [MessageId: Arrival] = [:]; var displayLinkRequests = 0
+            func ensureDisplayLink() { displayLinkRequests += 1 }
+            \(eligibility)
+            \(request)
+        }
+        let message = EngineRawMessage(id: MessageId(peerId: 1, namespace: 0, id: 42))
+        func queued(_ configure: (Coordinator) -> Void) -> Bool { let value = Coordinator(); configure(value); value.requestArrival(message); return value.arrivals[message.id] != nil }
+        var values: [String: Bool] = [
+            "readableVisible": queued { _ in },
+            "inactive": queued { $0.isApplicationActive = false },
+            "hidden": queued { $0.controller?.walletTransferAnimationsVisible = false },
+            "unreadable": queued { $0.controller?.canReadHistoryValue = false },
+            "preview": queued { $0.controller?.mode = .standard(.previewing) },
+            "readMessage": queued { $0.controller?.controllerInteraction.unreadMessageRange = [:] },
+            "alreadySeen": queued { $0.seenArrivals.insert(message.id) },
+            "missingController": queued { $0.controller = nil }
+        ]
+        let becomingReadable = Coordinator(); becomingReadable.controller?.canReadHistoryValue = false
+        becomingReadable.requestArrival(message)
+        values["unreadableDoesNotConsume"] = becomingReadable.seenArrivals.isEmpty
+        becomingReadable.controller?.canReadHistoryValue = true; becomingReadable.requestArrival(message)
+        values["queuesAfterReadable"] = becomingReadable.arrivals[message.id] != nil
+        UIAccessibility.isReduceMotionEnabled = true
+        let reduced = Coordinator(); reduced.requestArrival(message)
+        values["reducedMotionSeen"] = reduced.seenArrivals.contains(message.id)
+        values["reducedMotionNoAnimation"] = reduced.arrivals.isEmpty && reduced.displayLinkRequests == 0
+        print(String(data: try! JSONSerialization.data(withJSONObject: values, options: [.sortedKeys]), encoding: .utf8)!)
+        """
+        XCTAssertEqual(try executeSubmoduleFixture(fixture), ["readableVisible": true, "inactive": false, "hidden": false, "unreadable": false, "preview": false, "readMessage": false, "alreadySeen": false, "missingController": false, "unreadableDoesNotConsume": true, "queuesAfterReadable": true, "reducedMotionSeen": true, "reducedMotionNoAnimation": true])
     }
 
     func testSubmoduleUnreadRangesArePublishedBeforeLayout() throws {

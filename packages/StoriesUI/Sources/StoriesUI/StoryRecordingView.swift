@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import SwiftSignalKit
 import ObjcUtils
@@ -182,13 +183,16 @@ class StoryRecorderOverlayWindowController : NSObject {
     
     func stopAndSend() {
         if let recorder = arguments.interaction.presentation.inputRecording {
+            let analyticsContext = recorder.analyticsContext ?? Analytics.shared.unresolvedContext()
+            let request = recorder.analyticsRecordingJourney?.prepareSubmission(via: .release)
             recorder.stop()
-            let data = recorder.contextBoundData
+            let data = request?.observingPreparation(recorder.contextBoundData) ?? recorder.contextBoundData
             _ = data.start(next: { [weak chatInteraction = arguments.chatInteraction] medias in
                 guard let chatInteraction else {
+                    request?.end()
                     return
                 }
-                chatInteraction.sendMedia(medias)
+                chatInteraction.sendRecordingMediaObserved(medias, analyticsContext: analyticsContext, request: request)
             })
             closeModal(VideoRecorderModalController.self)
         }
@@ -199,6 +203,7 @@ class StoryRecorderOverlayWindowController : NSObject {
         let proccess = { [weak self] in
             guard let `self` = self else {return}
             if let recorder = self.arguments.interaction.presentation.inputRecording {
+                recorder.analyticsRecordingJourney?.cancel()
                 recorder.stop()
                 recorder.dispose()
                 closeModal(VideoRecorderModalController.self)
@@ -206,9 +211,14 @@ class StoryRecorderOverlayWindowController : NSObject {
             self.arguments.interaction.resetRecording()
         }
         if state == .fixed {
+            arguments.interaction.presentation.inputRecording?.analyticsRecordingJourney?.step(.openConfirmation)
+            let presentation = (arguments.interaction.presentation.inputRecording?.analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
             verifyAlert_button(for: parent, information: strings().chatRecordingCancel, ok: strings().alertDiscard, cancel: strings().alertNO, successHandler: { _ in
                 proccess()
             }, cancelHandler: { [weak self] in
+                self?.arguments.interaction.presentation.inputRecording?.analyticsRecordingJourney?.step(.cancelConfirmation)
+            }, onDeinit: {
+                presentation.end()
             })
         } else {
             proccess()
@@ -249,6 +259,7 @@ class StoryRecorderOverlayWindowController : NSObject {
     private func hold(animated: Bool) {
         
         arguments.interaction.presentation.inputRecording?.holdpromise.set(true)
+        arguments.interaction.presentation.inputRecording?.analyticsRecordingJourney?.lock()
         
         view.updateInside()
         
@@ -418,6 +429,8 @@ class StoryRecordingView: View {
         disposable.set(combineLatest(recorder.status |> deliverOnMainQueue, recorder.holdpromise.get() |> deliverOnMainQueue).start(next: { [weak self] state, hold in
             if case let .recording(duration) = state {
                 if duration > 0, recorder is ChatRecordingAudioState {
+                    recorder.analyticsRecordingJourney?.started()
+                    recorder.analyticsRecordingJourney?.resumed()
                 }
                 self?.update(duration, true, hold)
             }

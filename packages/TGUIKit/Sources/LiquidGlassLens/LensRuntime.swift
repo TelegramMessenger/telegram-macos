@@ -46,14 +46,14 @@ final class LensRuntime {
               Self.supports(effectTypes["CASDFKeyFillHighlightEffect"]!, setters: [
                 "keyColor": "^{CGColor", "fillColor": "^{CGColor", "keyHeight": "d", "fillHeight": "d",
                 "keyAngle": "d", "fillAngle": "d", "keySpread": "d", "fillSpread": "d",
-                "keyAmount": "d", "fillAmount": "d", "diffuseAmountScale": "d", "curvature": "d",
+                "keyAmount": "d", "fillAmount": "d", "curvature": "d",
               ]) else {
             return nil
         }
         self.layerTypes = layerTypes
         self.effectTypes = effectTypes
         self.filterClass = filterClass
-        guard makeFilter("glassBackground", inputs: LensSurface.backgroundInputs) != nil,
+        guard makeFilter("glassBackground", inputs: LensSurface.requiredBackgroundInputs) != nil,
               makeFilter("glassForeground", inputs: LensSurface.foregroundInputs) != nil,
               makeFilter("gaussianBlur", inputs: ["inputRadius", "inputNormalizeEdges"]) != nil,
               makeFilter("colorMatrix", inputs: ["inputColorMatrix", "inputPremultipliedValues"]) != nil,
@@ -61,6 +61,10 @@ final class LensRuntime {
               makeFilter("displacementMap", inputs: ["inputAmount", "inputSourceSublayerName"]) != nil else {
             return nil
         }
+    }
+
+    static func hasSetter(_ object: NSObject, key: String) -> Bool {
+        return object.responds(to: NSSelectorFromString("set" + key.prefix(1).uppercased() + key.dropFirst() + ":"))
     }
 
     private static func supports(_ type: AnyClass, setters: [String: String]) -> Bool {

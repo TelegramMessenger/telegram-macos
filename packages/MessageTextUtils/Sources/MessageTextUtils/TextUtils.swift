@@ -249,6 +249,10 @@ public func pullText(from message:Message, mediaViewType: MessageTextMediaViewTy
                     }
                 }
             }
+        case _ as TelegramMediaWidget:
+            if messageText.isEmpty {
+                messageText = strings().textUtilsWidget
+            }
         case _ as TelegramMediaUnsupported:
             if messageText.isEmpty {
                 messageText = strings().chatMessageUnsupported
@@ -283,7 +287,7 @@ public func chatListText(account:Account, for message:Message?, messagesCount: I
         
         mutableAttributedText.setSelected(color: theme.colors.underSelectedColor, range: mutableAttributedText.range)
         
-        return mutableAttributedText
+        return mutableAttributedText.trimNewLinesToSpace
     }
         
     if let renderedPeer = renderedPeer {

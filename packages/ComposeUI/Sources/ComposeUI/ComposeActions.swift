@@ -16,8 +16,10 @@ import SelectPeersUI
 public func createGroup<Context: AccountContextProtocol>(with context: Context, selectedPeers:Set<PeerId> = Set()) {
     
     let select = { SelectPeersController(titles: ComposeTitles(strings().composeSelectUsers, strings().composeNext), context: context, settings: [.contacts, .remote], isNewGroup: true, selectedPeers: selectedPeers) }
+    var analyticsOwner: WeakReference<CreateGroupViewController<Context>>?
     let chooseName = { () -> CreateGroupViewController<Context> in
         let controller = CreateGroupViewController(titles: ComposeTitles(strings().groupNewGroup, strings().composeCreate), context: context)
+        analyticsOwner = WeakReference(value: controller)
         return controller
     }
     let signal = execute(context: context, select, chooseName) |> castError(CreateGroupError.self) |> mapToSignal { (_, result) -> Signal<(CreateGroupResult?, String?), CreateGroupError> in
@@ -45,6 +47,7 @@ public func createGroup<Context: AccountContextProtocol>(with context: Context, 
     
     _ = signal.start(next: { result, complete in
         if let result = result, complete {
+            analyticsOwner?.value?.analyticsDidCreate()
             ComposeUIHooks.shared.navigateToChat(context.bindings.rootNavigation(), context, .peer(result.peerId))
         }
     }, error: { error in
@@ -70,6 +73,7 @@ public func createGroup<Context: AccountContextProtocol>(with context: Context, 
 
 public func createGroupDirectly<Context: AccountContextProtocol>(with context: Context, selectedPeers: [PeerId] = [], requires: CreateGroupRequires = [], onCreate:@escaping(PeerId)->Void = { _ in })  {
     let chooseName = CreateGroupViewController(titles: ComposeTitles(strings().groupNewGroup, strings().composeCreate), context: context, requires: requires)
+    let analyticsOwner = WeakReference(value: chooseName)
     let signal = completion(of: chooseName.onComplete, until: chooseName) |> mapToSignal { result -> Signal<(CreateGroupResult?, Bool), NoError> in
         
         let signal: Signal<CreateGroupResult?, CreateGroupError>
@@ -134,6 +138,7 @@ public func createGroupDirectly<Context: AccountContextProtocol>(with context: C
     chooseName.restart(with: ComposeState(selectedPeers))
     _ = signal.start(next: { result, complete in
         if let result = result, complete {
+            analyticsOwner.value?.analyticsDidCreate()
             ComposeUIHooks.shared.navigateToChat(context.bindings.rootNavigation(), context, .peer(result.peerId))
             onCreate(result.peerId)
             
@@ -143,6 +148,7 @@ public func createGroupDirectly<Context: AccountContextProtocol>(with context: C
 
 public func createSupergroup<Context: AccountContextProtocol>(with context: Context, defaultText: String = "") -> Signal<PeerId?, NoError> {
     let chooseName = CreateGroupViewController(titles: ComposeTitles(strings().groupNewGroup, strings().composeCreate), context: context, defaultText: defaultText)
+    let analyticsOwner = WeakReference(value: chooseName)
     context.bindings.rootNavigation().push(chooseName)
     chooseName.restart(with: ComposeState([]))
     let signal = chooseName.onComplete.get() |> mapToSignal { result -> Signal<(PeerId?, Bool), NoError> in
@@ -155,6 +161,7 @@ public func createSupergroup<Context: AccountContextProtocol>(with context: Cont
          }
          |> mapToSignal { peerId, picture -> Signal<(PeerId?, Bool), NoError> in
             if let peerId = peerId {
+                analyticsOwner.value?.analyticsDidCreate()
                 var additionalSignals:[Signal<Void, NoError>] = []
                 
                 if let picture = picture {

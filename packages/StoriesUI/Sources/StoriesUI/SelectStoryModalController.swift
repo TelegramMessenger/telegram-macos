@@ -9,6 +9,7 @@ import TelegramUtils
 import Localization
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 
 private final class Arguments {
@@ -265,6 +266,7 @@ public func SelectStoryModalController(context: any AccountContextProtocol, fold
         dataSignal: signal,
         title: strings().selectStoryTitle
     )
+    controller.analyticsScreen = .storiesAlbumPicker
 
     
     getController = { [weak controller] in

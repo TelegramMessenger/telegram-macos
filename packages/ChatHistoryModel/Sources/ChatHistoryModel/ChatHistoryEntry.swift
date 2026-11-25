@@ -742,6 +742,8 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
     messagesEntries = messagesEntries.filter { entry in
         if isNewThread, entry.message.threadId != EngineMessage.newTopicThreadId {
             return false
+        } else if chatHistoryMessageIsUndisplayedForumRoot(entry.message, location: location, peer: peer) {
+            return false
         } else if topicCreatorId != nil {
             if let action = entry.message.media.first as? TelegramMediaAction {
                 switch action.action {
@@ -840,6 +842,9 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
 
     let insertTopicSeparator:(ChatHistoryEntry, MessageHistoryEntry?, MessageHistoryEntry?)->Void = { entry, prev, next in
         if let message = entry.firstMessage, let _ = monoforumState {
+            if let accountPeerId, (location?.peerId ?? message.id.peerId).isRepliesOrSavedMessages(accountPeerId: accountPeerId) {
+                return
+            }
             let nextId = next?.message.threadId
             if let nextId, nextId != message.threadId, location?.threadId == nil {
                 let nextPeerId = PeerId(nextId)
@@ -899,14 +904,11 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
     }
     let emptyDetailsExpanded: Set<Int> = []
 
-    let translateCanTranslate = translate?.canTranslate ?? false
-    let translateTranslate = translate?.translate ?? false
-    let translateTo = translate?.to
     let canHighlightLinksDefault: Bool = {
         if peer?.isUser == false {
             return true
         }
-        return peerStatus?.contains(.canReport) == true ? false : true
+        return peerStatus?.flags.isDisjoint(with: .suspiciousPeer) ?? true
     }()
 
     var hasIncomingAfter = [Bool](repeating: false, count: messagesEntries.count)
@@ -1091,7 +1093,7 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
         var itemType:ChatItemType = .Full(rank: rank, rankType: rankType, header: .normal)
         var fwdType:ForwardItemType? = nil
         
-        if message.itHasRestrictedContent, message.restrictedText(contentSettings, contentConfig: contentConfig) != nil {
+        if message.hasRestrictedContent(contentSettings), message.restrictedText(contentSettings, contentConfig: contentConfig) != nil {
             message = message.withUpdatedMedia([]).withUpdatedText(" ")
         }
                 
@@ -1228,25 +1230,10 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
         
         var messageTranslate: ChatLiveTranslateContext.State.Result?
         var replyTranslate: ChatLiveTranslateContext.State.Result?
-        let canDisplayTranslation = accountPeerId.flatMap { message.effectivelyIncoming($0) } ?? true
-        if let translate = translate, let translateTo = translateTo {
-            if canDisplayTranslation {
-                messageTranslate = translate.result[.Key(id: message.id, toLang: translateTo)]
-            }
+        if let translate = translate {
+            messageTranslate = translate.translationResult(for: message, accountPeerId: accountPeerId)
             if let reply = message.replyAttribute, let replyMessage = message.associatedMessages[reply.messageId] {
-                replyTranslate = translate.result[.init(id: replyMessage.id, toLang: translateTo)]
-            } else {
-                replyTranslate = nil
-            }
-            if translateCanTranslate, translateTranslate {
-                if canDisplayTranslation, let _ = message.translationAttribute(toLang: translateTo) {
-                    messageTranslate = .complete(toLang: translateTo)
-                }
-                if let reply = message.replyAttribute, let replyMessage = message.associatedMessages[reply.messageId] {
-                    if let _ = replyMessage.translationAttribute(toLang: translateTo) {
-                        replyTranslate = .complete(toLang: translateTo)
-                    }
-                }
+                replyTranslate = translate.replyTranslationResult(for: replyMessage)
             }
         }
 
@@ -1260,10 +1247,7 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
         let entryQuoteRevealed = quoteRevealedByMessage[message.id] ?? emptyQuoteRevealed
         let entryDetailsExpanded = detailsExpandedByMessage[message.id] ?? emptyDetailsExpanded
 
-        var transcriptionTranslate: ChatLiveTranslateContext.State.TranscriptionResult?
-        if let translate = translate, let translateTo = translateTo, translateCanTranslate, translateTranslate {
-            transcriptionTranslate = translate.transcriptionResult[.Key(id: message.id, toLang: translateTo)]
-        }
+        let transcriptionTranslate = translate?.transcriptionTranslationResult(for: message, accountPeerId: accountPeerId)
 
         let summarize = translate?.summarizeResult[.Key(id: message.id)]
 
@@ -1487,10 +1471,6 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
         entries.insert(.topThreadInset(addTopThreadInset, MessageIndex.absoluteLowerBound(), renderType), at: 0)
     }
     
-    if let monoforumState, monoforumState == .horizontal {
-        entries.insert(.topThreadInset(40, MessageIndex.absoluteLowerBound(), renderType), at: 0)
-    }
-
   
     if !dynamicAdMessages.isEmpty {
         for message in dynamicAdMessages {

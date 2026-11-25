@@ -8,6 +8,7 @@ import TelegramTheme
 import TelegramUtils
 import Localization
 import InputDataUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -158,6 +159,7 @@ public func SelectGiftsModalController(context: any AccountContextProtocol, coll
         dataSignal: signal,
         title: strings().selectGiftsTitle
     )
+    controller.analyticsScreen = .giftsCollectionPicker
 
     getController = { [weak controller] in
         return controller

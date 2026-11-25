@@ -263,6 +263,10 @@ public final class PeerChannelMemberCategoriesContextsManager {
 
     
     public func recentOnlineSmall(peerId: PeerId) -> Signal<Int32, NoError> {
+        return recentOnlineSmallCounts(peerId: peerId) |> map { $0.recent } |> distinctUntilChanged
+    }
+
+    public func recentOnlineSmallCounts(peerId: PeerId) -> Signal<(total: Int32, recent: Int32), NoError> {
         let account = self.account
         return Signal { [weak self] subscriber in
             guard let strongSelf = self else {
@@ -307,7 +311,7 @@ public final class PeerChannelMemberCategoriesContextsManager {
                         }
                         |> distinctUntilChanged
                         |> deliverOnMainQueue).start(next: { count in
-                            subscriber.putNext(count)
+                            subscriber.putNext((Int32(updatedIds.count), count))
                         }))
                 }
             })
@@ -359,16 +363,13 @@ public final class PeerChannelMemberCategoriesContextsManager {
         }
     }
     
-    public func updateMemberAdminRights(peerId: PeerId, memberId: PeerId, adminRights: TelegramChatAdminRights?, rank: String?, guardBotId: PeerId? = nil) -> Signal<PeerId, NoError> {
+    public func updateMemberAdminRights(peerId: PeerId, memberId: PeerId, adminRights: TelegramChatAdminRights?, rank: String?, guardBotId: PeerId? = nil) -> Signal<PeerId, UpdateChannelAdminRightsError> {
         let engine = self.engine
         return engine.peers.updateChannelAdminRights(peerId: peerId, adminId: memberId, rights: adminRights, rank: rank)
-            |> map(Optional.init)
-            |> `catch` { _ -> Signal<(ChannelParticipant?, RenderedChannelParticipant)?, NoError> in
-                return .single(nil)
-            }
             |> deliverOnMainQueue
             |> beforeNext { [weak self] result in
-                if let strongSelf = self, let (previous, updated) = result {
+                if let strongSelf = self {
+                    let (previous, updated) = result
                     strongSelf.impl.with { impl in
                         for (contextPeerId, context) in impl.contexts {
                             if peerId == contextPeerId {
@@ -378,10 +379,11 @@ public final class PeerChannelMemberCategoriesContextsManager {
                     }
                 }
             }
-            |> mapToSignal { _ -> Signal<PeerId, NoError> in
+            |> mapToSignal { _ -> Signal<PeerId, UpdateChannelAdminRightsError> in
                 if let guardBotId {
                     return engine.peers.toggleChannelJoinRequest(peerId: peerId, enabled: true, guardBotId: guardBotId)
-                        |> `catch` { _ in .complete() }
+                        |> `catch` { _ -> Signal<Never, NoError> in .complete() }
+                        |> castError(UpdateChannelAdminRightsError.self)
                         |> map { _ -> PeerId in return memberId }
                         |> then(.single(memberId))
                 }

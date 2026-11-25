@@ -10,6 +10,7 @@ import InputDataUI
 import TGUIKit
 import TelegramCore
 import SwiftSignalKit
+import AppAnalytics
 
 class LeftSidebarFolderItem: TableRowItem {
 
@@ -166,7 +167,14 @@ class LeftSidebarFolderItem: TableRowItem {
         return false
     }
 
+    fileprivate func trackSelect(via: AnalyticsValues.Via) {
+        if !selected {
+            Analytics.shared.send(AnalyticsEvents.chatListFolderSelect(folderKind: folder == .allChats ? .allChats : .custom, via: via))
+        }
+    }
+
     override func accessibilityPerformPress() -> Bool {
+        trackSelect(via: .other)
         callback(folder)
         return true
     }
@@ -232,6 +240,7 @@ private final class LeftSidebarFolderView : TableRowView {
             guard let item = item as? LeftSidebarFolderItem else {
                 return
             }
+            item.trackSelect(via: .click)
             item.callback(item.folder)
         }
     }

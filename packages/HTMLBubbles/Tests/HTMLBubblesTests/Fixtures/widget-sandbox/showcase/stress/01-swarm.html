@@ -1,0 +1,139 @@
+<!--
+  showcase: stress widget for the renderer's per-frame path
+  idea: a swarm of up to 1,500 tiles moved by script every frame (transform), a few recoloured per frame, glass orbs drifting above them, a pointer that pulls the swarm, and an auto-scrolling log with a sticky header; the header shows the measured frame rate
+-->
+<style>
+  :root { color-scheme: light dark;
+    --fg: light-dark(#0a0a0a, #f5f5f7); --muted: light-dark(#6e6e73, #98989d); --card: light-dark(#fff, #1c1c1e); --card2: light-dark(#f2f2f7, #2c2c2e);
+    --border: light-dark(rgba(0,0,0,.08), rgba(255,255,255,.12)); --accent: #5e5ce6; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.35; color: var(--fg); -webkit-font-smoothing: antialiased; }
+  .card { width: 100%; box-sizing: border-box; background: var(--card); overflow: hidden; padding: 14px 16px 16px; }
+  .hd { display: flex; justify-content: space-between; align-items: baseline; }
+  h3 { margin: 0; font-size: 18px; }
+  .stat { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stat b { color: var(--fg); }
+  .bar { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .seg { display: flex; background: var(--card2); border-radius: 9px; padding: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--fg); font: 600 12px -apple-system, system-ui, sans-serif; padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .stage { position: relative; height: 260px; margin-top: 12px; border-radius: 14px; overflow: hidden; background: light-dark(#eef0f6, #101016); border: 1px solid var(--border); cursor: crosshair; }
+  .t { position: absolute; left: 0; top: 0; width: 9px; height: 9px; border-radius: 3px; }
+  .orb { position: absolute; left: 0; top: 0; width: 92px; height: 92px; border-radius: 46px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.35); box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+  .log { position: relative; height: 128px; margin-top: 12px; overflow: auto; border-radius: 12px; background: var(--card2); }
+  .log .sh { position: sticky; top: 0; display: flex; justify-content: space-between; padding: 6px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); background: var(--card2); border-bottom: 1px solid var(--border); }
+  .log .r { display: flex; justify-content: space-between; padding: 5px 10px; font-size: 12px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .log .r span:last-child { color: var(--muted); }
+</style>
+<div class="card">
+  <div class="hd"><h3>Swarm</h3><span class="stat"><b id="fps">–</b> fps · <b id="cnt">0</b> tiles</span></div>
+  <div class="bar">
+    <div class="seg" id="density"><button data-n="300">300</button><button data-n="800" class="on">800</button><button data-n="1500">1500</button></div>
+    <div class="seg" id="mode"><button data-m="wave" class="on">Wave</button><button data-m="vortex">Vortex</button><button data-m="rain">Rain</button><button data-m="pause">Pause</button></div>
+    <div class="seg" id="scroll"><button data-s="1" class="on">Log scroll</button></div>
+  </div>
+  <div class="stage" id="stage"></div>
+  <div class="log" id="log"><div class="sh"><span>Event</span><span>Frame</span></div></div>
+</div>
+<script>
+  const stage = document.getElementById('stage'), log = document.getElementById('log');
+  const fpsEl = document.getElementById('fps'), cntEl = document.getElementById('cnt');
+  const W = () => stage.clientWidth || 360, H = 260;
+  let tiles = [], orbs = [], mode = 'wave', autoScroll = true, pointer = null, frame = 0;
+
+  function build(n) {
+    tiles.forEach(t => t.el.remove());
+    tiles = [];
+    const w = W(), cols = Math.ceil(Math.sqrt(n * w / H)), rows = Math.ceil(n / cols);
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('div');
+      el.className = 't';
+      const c = i % cols, r = Math.floor(i / cols);
+      const hue = Math.round(360 * i / n);
+      el.style.backgroundColor = `hsl(${hue}, 80%, 58%)`;
+      stage.appendChild(el);
+      tiles.push({ el, hx: (c + 0.5) * w / cols - 4.5, hy: (r + 0.5) * H / rows - 4.5, hue, ph: (c * 0.35 + r * 0.22), x: 0, y: 0 });
+    }
+    orbs.forEach(o => stage.appendChild(o.el));
+    cntEl.textContent = n;
+  }
+
+  for (let i = 0; i < 3; i++) {
+    const el = document.createElement('div');
+    el.className = 'orb';
+    orbs.push({ el, a: i * 2.1, s: 0.5 + i * 0.17 });
+  }
+
+  for (let i = 0; i < 40; i++) {
+    const row = document.createElement('div');
+    row.className = 'r';
+    row.innerHTML = `<span>tile ${i * 37 % 800} re-coloured</span><span>#${i}</span>`;
+    log.appendChild(row);
+  }
+
+  function seg(id, attr, on) {
+    const box = document.getElementById(id);
+    box.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (id === 'scroll') { b.classList.toggle('on'); on(b.classList.contains('on')); return; }
+      box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      on(b.dataset[attr]);
+    });
+  }
+  seg('density', 'n', v => build(Number(v)));
+  seg('mode', 'm', v => { mode = v; });
+  seg('scroll', 's', v => { autoScroll = v; });
+
+  stage.addEventListener('pointermove', e => { const r = stage.getBoundingClientRect(); pointer = { x: e.clientX - r.left, y: e.clientY - r.top }; });
+  stage.addEventListener('pointerleave', () => { pointer = null; });
+
+  let last = 0, acc = 0, n = 0;
+  function step(now) {
+    frame++;
+    if (last) { acc += now - last; n++; }
+    last = now;
+    if (acc > 500) { fpsEl.textContent = Math.round(1000 * n / acc); acc = 0; n = 0; }
+    const t = now / 1000, w = W();
+    if (mode !== 'pause') {
+      for (let i = 0; i < tiles.length; i++) {
+        const p = tiles[i];
+        let x = p.hx, y = p.hy, s = 1, rot = 0;
+        if (mode === 'wave') {
+          y += Math.sin(t * 2.2 + p.ph) * 14; x += Math.cos(t * 1.3 + p.ph * 0.7) * 6; s = 0.75 + 0.35 * Math.sin(t * 3 + p.ph); rot = Math.sin(t + p.ph) * 40;
+        } else if (mode === 'vortex') {
+          const cx = w / 2, cy = H / 2, dx = p.hx - cx, dy = p.hy - cy, d = Math.hypot(dx, dy), a = Math.atan2(dy, dx) + t * (1.6 - d / 260);
+          x = cx + Math.cos(a) * d * (0.8 + 0.2 * Math.sin(t * 2 + d / 30)); y = cy + Math.sin(a) * d * 0.8; rot = a * 57;
+        } else {
+          y = (p.hy + t * (40 + (i % 7) * 18)) % (H + 20) - 10; rot = t * 90 + i;
+        }
+        if (pointer) {
+          const dx = pointer.x - x, dy = pointer.y - y, d2 = dx * dx + dy * dy;
+          if (d2 < 9000) { const k = (1 - d2 / 9000) * 0.6; x += dx * k; y += dy * k; s *= 1 + k; }
+        }
+        p.x += (x - p.x) * 0.35; p.y += (y - p.y) * 0.35;
+        p.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${s.toFixed(2)})`;
+      }
+      for (let k = 0; k < 16 && tiles.length; k++) {
+        const p = tiles[(frame * 16 + k * 97) % tiles.length];
+        p.hue = (p.hue + 47) % 360;
+        p.el.style.backgroundColor = `hsl(${p.hue}, 80%, 58%)`;
+      }
+      orbs.forEach((o, i) => {
+        o.a += 0.012 * (1 + i * 0.4);
+        o.el.style.transform = `translate(${(w / 2 - 46 + Math.cos(o.a) * w * 0.33).toFixed(1)}px, ${(H / 2 - 46 + Math.sin(o.a * 1.3) * 70).toFixed(1)}px) scale(${(0.8 + 0.25 * Math.sin(o.a * 2)).toFixed(2)})`;
+      });
+    }
+    if (frame % 12 === 0) {
+      const rows = log.querySelectorAll('.r'), row = rows[(frame / 12) % rows.length];
+      row.firstChild.textContent = `tile ${(frame * 16) % Math.max(1, tiles.length)} re-coloured`;
+      row.lastChild.textContent = `#${frame}`;
+    }
+    if (autoScroll) {
+      const max = log.scrollHeight - log.clientHeight;
+      log.scrollTop = max > 0 ? (frame * 0.6) % max : 0;
+    }
+    requestAnimationFrame(step);
+  }
+  build(800);
+  requestAnimationFrame(step);
+</script>

@@ -80,6 +80,7 @@ private final class FFMpegLookaheadReader {
     
     var audioStream: FFMpegFileReader.StreamInfo?
     var videoStream: FFMpegFileReader.StreamInfo?
+    private var videoGeometry: ChunkMediaPlayerVideoGeometry?
     
     var seekInfo: FFMpegLookahead.State.Seek?
     var maxReadPts: FFMpegLookahead.State.Seek?
@@ -147,9 +148,13 @@ private final class FFMpegLookaheadReader {
                 var duration = CMTimeMake(value: avFormatContext.duration(atStreamIndex: streamIndex), timescale: timebase.timescale)
                 duration = CMTimeMaximum(CMTime(value: 0, timescale: duration.timescale), CMTimeSubtract(duration, startTime))
                 
-                //let metrics = avFormatContext.metricsForStream(at: streamIndex)
-                //let rotationAngle: Double = metrics.rotationAngle
-                //let aspect = Double(metrics.width) / Double(metrics.height)
+                if isVideo {
+                    let metrics = avFormatContext.metricsForStream(at: streamIndex)
+                    self.videoGeometry = ChunkMediaPlayerVideoGeometry(
+                        rotationAngle: metrics.rotationAngle,
+                        dimensions: CGSize(width: Int(metrics.width), height: Int(metrics.height))
+                    )
+                }
                 
                 let stream = FFMpegFileReader.StreamInfo(
                     index: streamIndexNumber.intValue,
@@ -280,7 +285,8 @@ private final class FFMpegLookaheadReader {
                 }
                 self.videoStreamState = FFMpegLookahead.StreamState(
                     info: videoStream,
-                    readableToTime: pts
+                    readableToTime: pts,
+                    videoGeometry: self.videoGeometry
                 )
             }
             
@@ -389,10 +395,12 @@ final class FFMpegLookahead {
     struct StreamState: Equatable {
         let info: FFMpegFileReader.StreamInfo
         let readableToTime: CMTime
+        let videoGeometry: ChunkMediaPlayerVideoGeometry?
         
-        init(info: FFMpegFileReader.StreamInfo, readableToTime: CMTime) {
+        init(info: FFMpegFileReader.StreamInfo, readableToTime: CMTime, videoGeometry: ChunkMediaPlayerVideoGeometry? = nil) {
             self.info = info
             self.readableToTime = readableToTime
+            self.videoGeometry = videoGeometry
         }
     }
     
@@ -467,6 +475,7 @@ final class FFMpegLookahead {
 
 final class ChunkMediaPlayerDirectFetchSourceImpl: ChunkMediaPlayerSourceImpl {
     private let resource: ChunkMediaPlayerV2.SourceDescription.ResourceDescription
+    private(set) var videoGeometry: ChunkMediaPlayerVideoGeometry?
     
     private let partsStateValue = Promise<ChunkMediaPlayerPartsState>()
     var partsState: Signal<ChunkMediaPlayerPartsState, NoError> {
@@ -543,6 +552,9 @@ final class ChunkMediaPlayerDirectFetchSourceImpl: ChunkMediaPlayerSourceImpl {
                 }
                 if self.currentLookaheadId != lookaheadId {
                     return
+                }
+                if let geometry = state.video?.videoGeometry {
+                    self.videoGeometry = geometry
                 }
                 guard let mainTrack = state.video ?? state.audio else {
                     self.partsStateValue.set(.single(ChunkMediaPlayerPartsState(

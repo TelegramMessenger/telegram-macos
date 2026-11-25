@@ -17,6 +17,7 @@ import DateUtils
 import TelegramIconsTheme
 import Postbox
 import InlineStickerLayer
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -253,6 +254,7 @@ public func SuspiciousRevokeModal(context: any AccountContextProtocol, session: 
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .appLoginPrevented
     
     controller.onDeinit = {
         actionsDisposable.dispose()

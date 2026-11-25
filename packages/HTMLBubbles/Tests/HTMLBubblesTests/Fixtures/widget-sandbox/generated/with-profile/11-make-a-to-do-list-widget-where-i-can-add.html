@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>To-Do List</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111827; --muted: #6b7280; --line: #e5e7eb; --accent: #f59e0b; --danger: #ef4444; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111827; --fg: #f3f4f6; --muted: #9ca3af; --line: #374151; --accent: #fbbf24; --danger: #f87171; } }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; background: var(--bg); color: var(--fg); }
+  h2 { margin: 0 0 12px; font-size: 17px; }
+  form { display: flex; gap: 8px; margin-bottom: 10px; }
+  input[type=text] { flex: 1; padding: 9px; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+  button.add { padding: 9px 14px; background: var(--accent); color: #111; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+  li.done span { text-decoration: line-through; color: var(--muted); }
+  li span { flex: 1; font-size: 15px; }
+  li input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  li button { background: none; border: none; color: var(--danger); font-size: 18px; cursor: pointer; opacity: .7; }
+  .empty { text-align: center; color: var(--muted); padding: 14px; font-size: 14px; }
+  .footer { font-size: 12px; color: var(--muted); margin-top: 10px; display: flex; justify-content: space-between; gap: 10px; }
+  .footer button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; }
+</style>
+</head>
+<body>
+<h2>✅ To-Do</h2>
+<form id="f"><input type="text" id="txt" placeholder="Add a task…" autocomplete="off"><button class="add" type="submit">Add</button></form>
+<ul id="list"></ul>
+<div class="footer"><span id="count"></span><span><button type="button" id="clear">Clear completed</button> · <button type="button" id="send">Send list</button></span></div>
+<script>
+  // Note: the widget cannot persist data between renders, so the list lives in memory.
+  var todos = [
+    { text: 'Buy groceries', done: false },
+    { text: 'Call the dentist', done: true },
+    { text: 'Finish the report', done: false },
+  ];
+  var list = document.getElementById('list');
+  function render() {
+    list.innerHTML = '';
+    if (!todos.length) list.innerHTML = '<li class="empty">Nothing to do 🎉</li>';
+    todos.forEach(function (t, i) {
+      var li = document.createElement('li');
+      li.className = t.done ? 'done' : '';
+      li.id = 'todo-' + i;
+      li.innerHTML = '<input type="checkbox"' + (t.done ? ' checked' : '') + '><span></span><button type="button" title="Delete">×</button>';
+      li.querySelector('span').textContent = t.text;
+      li.querySelector('input').onchange = function (e) { t.done = e.target.checked; render(); };
+      li.querySelector('button').onclick = function () { todos.splice(i, 1); render(); };
+      list.appendChild(li);
+    });
+    var left = todos.filter(function (t) { return !t.done; }).length;
+    document.getElementById('count').textContent = left + ' item' + (left === 1 ? '' : 's') + ' left';
+  }
+  document.getElementById('f').onsubmit = function (e) {
+    e.preventDefault();
+    var v = document.getElementById('txt').value.trim();
+    if (!v) return;
+    todos.push({ text: v, done: false });
+    document.getElementById('txt').value = '';
+    render();
+  };
+  document.getElementById('clear').onclick = function () { todos = todos.filter(function (t) { return !t.done; }); render(); };
+  document.getElementById('send').onclick = function () {
+    if (window.TelegramWidget) TelegramWidget.sendMessage('My to-do list:\n' + todos.map(function (t) { return (t.done ? '☑ ' : '☐ ') + t.text; }).join('\n'));
+  };
+  render();
+</script>
+</body>
+</html>

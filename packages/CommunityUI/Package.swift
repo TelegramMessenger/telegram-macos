@@ -29,6 +29,7 @@ let package = Package(
         .package(name: "MessageTextUtils", path: "../MessageTextUtils"),
         .package(name: "AvatarEditorUI", path: "../AvatarEditorUI"),
         .package(name: "FilePanels", path: "../FilePanels"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
     ],
     targets: [
         .target(
@@ -54,6 +55,7 @@ let package = Package(
                 .product(name: "MessageTextUtils", package: "MessageTextUtils", condition: nil),
                 .product(name: "AvatarEditorUI", package: "AvatarEditorUI", condition: nil),
                 .product(name: "FilePanels", package: "FilePanels", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
             ],
             path: "Sources/CommunityUI"),
     ]

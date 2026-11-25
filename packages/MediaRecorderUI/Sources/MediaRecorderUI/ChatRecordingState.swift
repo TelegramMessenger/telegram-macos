@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import Foundation
 import TGUIKit
 import TelegramCore
@@ -58,8 +59,18 @@ public struct ChatRecordingPreviewData : Equatable {
 
 
 open class ChatRecordingState : Equatable {
+    public private(set) var analyticsContext: AnalyticsContext?
+    public var analyticsRecordingJourney: AnalyticsRecordingJourney?
+    private var analyticsPresentation: AnalyticsPresentation?
+
+    public final func inheritAnalyticsContext(_ context: AnalyticsContext) {
+        guard analyticsContext == nil else { return }
+        analyticsContext = context
+        analyticsPresentation = context.beginPresentation()
+    }
+
     public final var contextBoundData: Signal<[MediaSenderContainer], NoError> {
-        return data |> deliverOnMainQueue
+        return (analyticsContext ?? Analytics.shared.unresolvedContext()).preservingPresentation(data |> deliverOnMainQueue)
     }
   
     public let autohold: Bool
@@ -203,46 +214,59 @@ open class ChatRecordingState : Equatable {
         dispose()
         closeRecorderModal()
     }
-    public final func send(from chatInteraction: Any, closingOtherModals: Bool = false) {
+    public final func send(from chatInteraction: Any, via: AnalyticsRecordingJourney.Spec.SubmitVia, closingOtherModals: Bool = false) {
         guard !isCancelled, !hasSubmitted, !isPreparingSubmission, trimOperationId == nil else { return }
         isPreparingSubmission = true
-        guard !isCancelled else { return }
+        let request = analyticsRecordingJourney?.prepareSubmission(via: via)
+        guard !isCancelled else { request?.end(); return }
         guard let range = pendingTrimRange else {
-            completeSubmission(from: chatInteraction, closingOtherModals: closingOtherModals)
+            completeSubmission(from: chatInteraction, request: request, closingOtherModals: closingOtherModals)
             return
         }
         let sourceDuration = trimSourceDuration
         let operation = MetaDisposable()
         submissionDisposable.set(operation)
         submissionState.set(.preparing)
-        guard !isCancelled else { return }
+        guard !isCancelled else { request?.end(); return }
         weak var destination = chatInteraction as AnyObject
         operation.set((performTrim(range) |> then(.single(false)) |> take(1) |> deliverOnMainQueue).start(next: { [weak self] success in
-            guard let self, !self.isCancelled else { return }
+            guard let self, !self.isCancelled else { request?.end(); return }
             let accepted = success && self.pendingTrimRange == range && self.trimSourceDuration == sourceDuration
             if accepted {
                 self.updateTrimRange(nil)
             }
             guard let destination else {
+                request?.end()
                 self.isPreparingSubmission = false
                 self.submissionState.set(.failed)
                 return
             }
             guard accepted else {
+                request?.fail(.preparation)
                 self.isPreparingSubmission = false
                 self.submissionState.set(.failed)
                 return
             }
-            self.completeSubmission(from: destination, closingOtherModals: closingOtherModals)
+            self.completeSubmission(from: destination, request: request, closingOtherModals: closingOtherModals)
         }))
     }
 
-    private func completeSubmission(from chatInteraction: Any, closingOtherModals: Bool) {
-        guard !isCancelled, !hasSubmitted else { return }
+    private func completeSubmission(from chatInteraction: Any, request: AnalyticsRecordingRequest?, closingOtherModals: Bool) {
+        guard !isCancelled, !hasSubmitted else { request?.end(); return }
         hasSubmitted = true
         isPreparingSubmission = false
         stop()
-        MediaRecorderHooks.shared.setPendingMedia(chatInteraction, contextBoundData)
+        let data = request?.observingPreparation(contextBoundData) ?? contextBoundData
+        if let setPendingRecording = MediaRecorderHooks.shared.setPendingRecording {
+            setPendingRecording(chatInteraction, data, analyticsContext ?? Analytics.shared.unresolvedContext(), request)
+        } else {
+            request?.end()
+            if let setPendingMediaWithContext = MediaRecorderHooks.shared.setPendingMediaWithContext {
+                setPendingMediaWithContext(chatInteraction, data, analyticsContext ?? Analytics.shared.unresolvedContext())
+            } else {
+                MediaRecorderHooks.shared.setPendingMedia(chatInteraction, data)
+            }
+        }
         closeRecorderModal()
         if closingOtherModals {
             closeAllModals()
@@ -252,7 +276,7 @@ open class ChatRecordingState : Equatable {
 
     public final func discard(from chatInteraction: Any, sendingMedia: Bool = false, closingOtherModals: Bool = false) {
         if sendingMedia {
-            send(from: chatInteraction, closingOtherModals: closingOtherModals)
+            send(from: chatInteraction, via: .unknown, closingOtherModals: closingOtherModals)
             return
         }
         cancel()
@@ -360,6 +384,7 @@ public final class ChatRecordingVideoState : ChatRecordingState {
 public final class ChatRecordingAudioState : ChatRecordingState {
     private let recorder:ManagedAudioRecorder
     private let path: String
+    public var startsDictation: Bool = false
 
     
     public override var micLevel: Signal<Float, NoError> {
@@ -449,6 +474,18 @@ public final class ChatRecordingAudioState : ChatRecordingState {
     
     public override func performTrim(_ range: Range<Double>) -> Signal<Bool, NoError> {
         return recorder.applyTrim(range)
+    }
+
+    public func compressedSnapshot() -> Signal<Data?, NoError> {
+        return recorder.compressedSnapshot()
+    }
+
+    public func beginPCMTap(_ tap: @escaping (Data) -> Void) -> Signal<Data?, NoError> {
+        return recorder.beginPCMTap(tap)
+    }
+
+    public func endPCMTap() {
+        recorder.endPCMTap()
     }
     
     public override func dispose() {

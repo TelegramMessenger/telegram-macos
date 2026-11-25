@@ -22,11 +22,7 @@ public final class StorageUsageHeaderItem : GeneralRowItem {
     public let headerLayout: TextViewLayout
     public init(_ initialSize: NSSize, stableId: AnyHashable, header: String, string: String, progress: CGFloat, viewType: GeneralViewType) {
         
-        var progress = min(1, max(0, progress))
-        
-        if progress.isNaN || progress.isFinite {
-            progress = 1
-        }
+        let progress = progress.isFinite ? min(1, max(0, progress)) : 0
 
         
         self.headerLayout = .init(.initialize(string: header, color: theme.colors.text, font: .medium(.header)), alignment: .center)
@@ -120,7 +116,8 @@ private final class StorageUsageHeaderItemView: GeneralRowView {
         
         textView.update(item.textLayout)
         progressView.style = ControlStyle(foregroundColor: theme.colors.accent.withAlphaComponent(0.8), backgroundColor: theme.colors.accent.withAlphaComponent(0.2), highlightColor: .clear)
-        progressView.setFrameSize(NSMakeSize(min(textView.frame.width - 40, 260), 4))
+        textView.isHidden = item.textLayout.attributedString.length == 0
+        progressView.setFrameSize(NSMakeSize(max(0, min(textView.frame.width - 40, 260)), 4))
 
         progressView.set(progress: item.progress, animated: animated)
         needsLayout = true

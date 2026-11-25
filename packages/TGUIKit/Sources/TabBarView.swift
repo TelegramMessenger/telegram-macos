@@ -69,13 +69,13 @@ final class TabBarItemControl: Control {
             tabBar?.cancelSelection()
             super.mouseDown(with: event)
         } else if isEnabled && userInteractionEnabled, let tabBar {
-            tabBar.beginSelection(at: tabBar.convert(event.locationInWindow, from: nil))
+            tabBar.beginSelection(at: tabBar.convert(event.locationInWindow, from: nil), control: self, timestamp: event.timestamp)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
         if !contextClick, let tabBar {
-            tabBar.updateSelection(at: tabBar.convert(event.locationInWindow, from: nil))
+            tabBar.updateSelection(at: tabBar.convert(event.locationInWindow, from: nil), timestamp: event.timestamp)
         }
     }
 
@@ -101,7 +101,12 @@ public class TabBarView: View {
     private struct SelectionGesture {
         let start: NSPoint
         let center: CGFloat
+        let sourceIndex: Int
+        let pressedAt: TimeInterval
+        let heldPosition: CGFloat?
+        var reordersTabs = false
         var position: CGFloat
+        var destination: Int
         var isDragging = false
     }
 
@@ -109,11 +114,35 @@ public class TabBarView: View {
     private(set) var itemControls: [TabBarItemControl] = []
     public private(set) var selectedIndex: Int = 0
     public weak var delegate: TabViewDelegate?
+    var allowsReordering = false {
+        didSet {
+            cancelSelection(animated: false)
+            updateLayout()
+        }
+    }
+    var didReorderTabs: () -> Void = {}
 
     private let glass = LiquidGlassView(frame: .zero, cornerRadius: FloatingTabBarLayout.height / 2, tintAlpha: 0.15)
     private let selectionView = View()
     private let liftedGlass = LiquidGlassView(frame: .zero, cornerRadius: 28, hasShadow: true, hasBorder: true, tintAlpha: 0.1)
     private var gesture: SelectionGesture?
+    private var reorderGesture: SelectionGesture? {
+        guard let gesture, gesture.reordersTabs, gesture.isDragging else {
+            return nil
+        }
+        return gesture
+    }
+
+    private var pickup: NSView?
+    private weak var pickupControl: TabBarItemControl?
+    private var pickupCleanup: DispatchWorkItem?
+    private static let settleDuration: TimeInterval = 0.22
+    private static let reorderHoldDuration: TimeInterval = 0.25
+
+    private var reorderTransition: ContainedViewLayoutTransition {
+        return reduceMotion() ? .immediate : .animated(duration: Self.settleDuration, curve: .easeOut)
+    }
+
     private var escapeMonitor: Any?
     private var resignObserver: NSObjectProtocol?
     private var contentScales: [CGFloat] = []
@@ -166,6 +195,10 @@ public class TabBarView: View {
     }
 
     deinit {
+        pickupCleanup?.cancel()
+        if reorderGesture != nil {
+            NSCursor.pop()
+        }
         if let escapeMonitor {
             NSEvent.removeMonitor(escapeMonitor)
         }
@@ -360,19 +393,131 @@ public class TabBarView: View {
         glass.frame = bounds
         glass.updateLayout(size: bounds.size, transition: .immediate)
         nativeLens?.frame = bounds
-        for (index, frame) in itemLayout.itemFrames.enumerated() {
-            let control = itemControls[index]
-            if control.frame != frame {
-                control.frame = frame
-                control.subviews.first?.center()
-                tabs[index].subNode?.update()
-            }
-        }
+        updateItemFrames(transition: .immediate)
         if modeChanged {
             updateSelection(animated: false)
         } else {
-            updateLens(transition: .immediate)
+            let isReordering = reorderGesture != nil || pickup != nil
+            updateLens(transition: isReordering ? reorderTransition : .immediate)
         }
+    }
+
+    private func displayedCenter(of control: TabBarItemControl) -> CGFloat {
+        return control.frame.midX + displayedOffset(of: control)
+    }
+
+    private func displayedOffset(of control: TabBarItemControl) -> CGFloat {
+        guard let layer = control.layer, let animation = layer.animation(forKey: "position") as? CABasicAnimation else {
+            return 0
+        }
+        let shown = layer.presentation()?.position ?? (animation.fromValue as? NSValue)?.pointValue ?? layer.position
+        return shown.x - layer.position.x
+    }
+
+    private func updateItemFrames(transition: ContainedViewLayoutTransition) {
+        let layout = itemLayout
+        let drag = reorderGesture
+        let commonWidth = allowsReordering ? layout.itemFrames.map(\.width).min() : nil
+
+        for (index, control) in itemControls.enumerated() {
+            let isDragged = index == drag?.sourceIndex
+            var slot = index
+            if let drag, !isDragged {
+                if drag.sourceIndex < index && index <= drag.destination {
+                    slot -= 1
+                } else if drag.destination <= index && index < drag.sourceIndex {
+                    slot += 1
+                }
+            }
+            var frame = layout.itemFrames[slot]
+            let heldPosition = index == gesture?.sourceIndex ? gesture?.heldPosition : nil
+            if let position = isDragged ? drag?.position : heldPosition {
+                frame = layout.selectionFrame(at: position, lifted: false)
+            }
+            if let commonWidth {
+                frame = NSRect(x: frame.midX - commonWidth / 2, y: frame.minY, width: commonWidth, height: frame.height)
+            }
+            move(control, tab: tabs[index], to: frame, transition: isDragged ? .immediate : transition)
+        }
+    }
+
+    private func move(_ control: TabBarItemControl, tab: TabItem, to frame: NSRect, transition: ContainedViewLayoutTransition) {
+        guard control.frame != frame else {
+            return
+        }
+        let layer = control.layer
+        let previousX = (layer?.position.x ?? 0) + displayedOffset(of: control)
+        layer?.removeAnimation(forKey: "position")
+        let resized = control.frame.size != frame.size
+        control.frame = frame
+        if resized {
+            control.subviews.first?.center()
+            tab.subNode?.update()
+        }
+        if case let .animated(duration, curve) = transition, let layer {
+            let from = NSPoint(x: previousX, y: layer.position.y)
+            layer.animatePosition(from: from, to: layer.position, duration: duration, timingFunction: curve.timingFunction)
+        }
+    }
+
+    private func startPickup(for control: TabBarItemControl) {
+        guard !reduceMotion() else {
+            return
+        }
+        clearPickup()
+        pickupControl = control
+        control.layer?.zPosition = 1
+        if #available(macOS 14.0, *) {
+            control.clipsToBounds = false
+        }
+        if nativeLens != nil, let glass = lensFactory() {
+            pickup = glass
+            glass.frame = control.bounds.insetBy(dx: -10, dy: -8)
+            control.addSubview(glass)
+            glass.layer?.zPosition = -1
+            updatePickup(progress: 1, animation: .immediate)
+        } else {
+            let glass = LiquidGlassView(frame: control.bounds.insetBy(dx: -8, dy: -8), cornerRadius: 28, hasShadow: true, hasBorder: true, tintAlpha: 0.1)
+            pickup = glass
+            glass.isEventLess = true
+            control.addSubview(glass)
+            glass.layer?.zPosition = -1
+            glass.updateLayout(size: glass.bounds.size, transition: .immediate)
+        }
+    }
+
+    private func updatePickup(progress: CGFloat, animation: LiquidGlassLensAnimation) {
+        guard let glass = pickup as? LiquidGlassLensView else {
+            return
+        }
+        let frame = progress == 0 ? glass.bounds.insetBy(dx: 10, dy: 8) : glass.bounds
+        glass.update(lensFrame: frame, interactionProgress: progress, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, contentSources: [])
+    }
+
+    private func settlePickup(transition: ContainedViewLayoutTransition) {
+        guard let pickup, case let .animated(duration, curve) = transition else {
+            clearPickup()
+            return
+        }
+        updatePickup(progress: 0, animation: .animated(duration: duration, timingFunction: curve.timingFunction))
+        if !(pickup is LiquidGlassLensView) {
+            transition.updateAlpha(view: pickup, alpha: 0)
+        }
+        let cleanup = DispatchWorkItem { [weak self] in
+            self?.clearPickup()
+        }
+        pickupCleanup = cleanup
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: cleanup)
+    }
+
+    private func clearPickup() {
+        pickupCleanup?.cancel()
+        pickupCleanup = nil
+        (pickup as? LiquidGlassLensView)?.reset()
+        pickup?.removeFromSuperview()
+        pickup = nil
+        pickupControl?.layer?.zPosition = 0
+        pickupControl = nil
     }
 
     public func setSelectedIndex(_ index: Int, respondToDelegate: Bool, animated: Bool) {
@@ -395,13 +540,23 @@ public class TabBarView: View {
         }
     }
 
-    func beginSelection(at point: NSPoint) {
+    func beginSelection(at point: NSPoint, control: TabBarItemControl? = nil, timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         _ = updateLensMode()
-        guard !isHidden, let index = itemLayout.index(at: point) else {
+        let hitIndex = control.flatMap { itemControls.firstIndex(of: $0) }
+        guard !isHidden, let index = hitIndex ?? itemIndex(at: point) else {
             return
         }
         finishGesture()
-        gesture = SelectionGesture(start: point, center: itemLayout.itemFrames[index].midX, position: CGFloat(index))
+        clearPickup()
+        let layout = itemLayout
+        let pressed = itemControls[index]
+        let center = allowsReordering ? displayedCenter(of: pressed) : layout.itemFrames[index].midX
+        let heldPosition = center == pressed.frame.midX ? nil : layout.position(at: center)
+        gesture = SelectionGesture(start: point, center: center, sourceIndex: index, pressedAt: timestamp, heldPosition: heldPosition, position: CGFloat(index), destination: index)
+        if heldPosition != nil {
+            let frame = pressed.frame.offsetBy(dx: center - pressed.frame.midX, dy: 0)
+            move(pressed, tab: tabs[index], to: frame, transition: .immediate)
+        }
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.gesture != nil, event.window === self.window, event.keyCode == 53 else {
                 return event
@@ -417,50 +572,124 @@ public class TabBarView: View {
         updateSelection(animated: true)
     }
 
-    func updateSelection(at point: NSPoint) {
-        guard var gesture, gesture.isDragging || abs(point.x - gesture.start.x) >= 3 else {
+    func updateSelection(at point: NSPoint, timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard var gesture else {
             return
         }
-        gesture.isDragging = true
-        let position = itemLayout.position(at: gesture.center + point.x - gesture.start.x)
+        let delta = point.x - gesture.start.x
+        guard gesture.isDragging || abs(delta) >= 3 else {
+            return
+        }
+        let startedDragging = !gesture.isDragging
+        if startedDragging {
+            gesture.reordersTabs = allowsReordering && tabs.count > 1 && timestamp > gesture.pressedAt + Self.reorderHoldDuration
+        }
+        let layout = itemLayout
+        let x = gesture.center + delta
+        let position = layout.position(at: x)
+        if gesture.reordersTabs {
+            let direction: CGFloat = position >= CGFloat(gesture.destination) ? 1 : -1
+            let thresholdPosition = layout.position(at: x - direction * 4)
+            let destination = Int(thresholdPosition.rounded())
+            if (CGFloat(destination - gesture.destination) * direction) > 0 {
+                gesture.destination = destination
+            }
+        }
         let changed = gesture.position != position
         gesture.position = position
+        gesture.isDragging = true
         self.gesture = gesture
-        if changed {
+
+        if gesture.reordersTabs {
+            if startedDragging {
+                NSCursor.closedHand.push()
+                updateSelection(animated: false)
+                startPickup(for: itemControls[gesture.sourceIndex])
+            }
+            updateItemFrames(transition: reorderTransition)
+            updateLens(transition: gesture.sourceIndex == selectedIndex ? .immediate : reorderTransition)
+        } else if changed {
             updateSelection(animated: false)
         }
     }
 
     func endSelection(at point: NSPoint) {
-        guard gesture != nil else {
+        guard let gesture else {
             return
         }
-        let isDragging = gesture?.isDragging == true
-        if isDragging {
+        if gesture.reordersTabs {
+            endReorder(at: point)
+            return
+        }
+        if gesture.isDragging {
             updateSelection(at: point)
         }
-        let index = Int(gesture!.position.rounded())
-        finishGesture()
+        let index = Int((self.gesture ?? gesture).position.rounded())
+        finishGesture(reorderTransition: reorderTransition)
         if index == selectedIndex {
             updateSelection(animated: true)
             delegate?.scrollup()
         } else {
             selectedIndex = index
-            updateSelection(animated: true, playSelectedItem: isDragging)
+            updateSelection(animated: true, playSelectedItem: gesture.isDragging)
             delegate?.didChange(selected: tabs[index], index: index)
         }
     }
 
-    func cancelSelection(animated: Bool = true) {
-        guard gesture != nil else {
+    private func endReorder(at point: NSPoint) {
+        guard bounds.insetBy(dx: -16, dy: -20).contains(point) else {
+            cancelSelection()
             return
         }
-        finishGesture()
-        updateSelection(animated: animated)
+        updateSelection(at: point)
+        guard let drag = reorderGesture else {
+            return
+        }
+        let source = drag.sourceIndex
+        let destination = drag.destination
+        if source != destination {
+            let selectedControl = itemControls[selectedIndex]
+            tabs.insert(tabs.remove(at: source), at: destination)
+            itemControls.insert(itemControls.remove(at: source), at: destination)
+            contentScales.insert(contentScales.remove(at: source), at: destination)
+            selectedIndex = itemControls.firstIndex(of: selectedControl) ?? selectedIndex
+        }
+        finishGesture(reorderTransition: reorderTransition)
+        updateLens(transition: reorderTransition)
+        if source != destination {
+            didReorderTabs()
+        }
     }
 
-    private func finishGesture() {
+    func cancelSelection(animated: Bool = true) {
+        guard let gesture else {
+            if !animated, pickup != nil {
+                clearPickup()
+                updateLens(transition: .immediate)
+            }
+            return
+        }
+        let transition = animated ? reorderTransition : .immediate
+        finishGesture(reorderTransition: transition)
+        if gesture.reordersTabs {
+            updateLens(transition: transition)
+        } else {
+            updateSelection(animated: animated)
+        }
+    }
+
+    private func finishGesture(reorderTransition: ContainedViewLayoutTransition = .immediate) {
+        let previous = gesture
         gesture = nil
+        if let previous {
+            if previous.reordersTabs || previous.heldPosition != nil {
+                updateItemFrames(transition: reorderTransition)
+            }
+            if previous.reordersTabs {
+                NSCursor.pop()
+                settlePickup(transition: reorderTransition)
+            }
+        }
         if let escapeMonitor {
             NSEvent.removeMonitor(escapeMonitor)
             self.escapeMonitor = nil
@@ -476,7 +705,8 @@ public class TabBarView: View {
         let reduceMotion = self.reduceMotion()
         let animated = animated && !reduceMotion && !modeChanged
         let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.4, curve: .spring) : .immediate
-        let previewIndex = gesture.map { Int($0.position.rounded()) } ?? selectedIndex
+        let selectionGesture = gesture.flatMap { $0.reordersTabs ? nil : $0 }
+        let previewIndex = selectionGesture.map { Int($0.position.rounded()) } ?? selectedIndex
         for (index, control) in itemControls.enumerated() {
             let selected = index == previewIndex
             if control.tabIsSelected != selected || (selected && playSelectedItem), let icon = control.subviews.first {
@@ -484,7 +714,7 @@ public class TabBarView: View {
                 control.isSelected = selected
                 tabs[index].setSelected(selected, for: icon, animated: animated)
             }
-            let scale: CGFloat = nativeLens == nil && gesture != nil && selected && !reduceMotion ? 1.15 : 1
+            let scale: CGFloat = nativeLens == nil && selectionGesture != nil && selected && !reduceMotion ? 1.15 : 1
             if contentScales[index] != scale, let layer = control.layer {
                 let previous = layer.presentation()?.transform ?? layer.transform
                 var transform = CATransform3DMakeTranslation(control.bounds.midX, control.bounds.midY, 0)
@@ -503,10 +733,14 @@ public class TabBarView: View {
     }
 
     private func updateLens(transition: ContainedViewLayoutTransition) {
+        let hidesRestingSelection = reorderGesture != nil && !reduceMotion()
         selectionView.isHidden = tabs.isEmpty
-        let position = gesture?.position ?? CGFloat(selectedIndex)
-        let lifted = gesture != nil && !reduceMotion()
-        let frame = itemLayout.selectionFrame(at: position, lifted: lifted, nativeLens: nativeLens != nil)
+        let selectionGesture = gesture.flatMap { $0.reordersTabs ? nil : $0 }
+        let position = selectionGesture?.position ?? CGFloat(selectedIndex)
+        let lifted = selectionGesture != nil && !reduceMotion()
+        let frame = reorderGesture != nil && itemControls.indices.contains(selectedIndex)
+            ? itemControls[selectedIndex].frame
+            : itemLayout.selectionFrame(at: position, lifted: lifted, nativeLens: nativeLens != nil)
         selectionView.layer?.cornerRadius = frame.height / 2
         updateSelectionFrame(frame, transition: transition)
         if let nativeLens {
@@ -522,22 +756,28 @@ public class TabBarView: View {
                 }
             }
             nativeLens.frame = bounds
-            let unlensedIconColor = presentation.colors.isDark ? NSColor.white : presentation.colors.grayIcon
-            let sources = itemControls.enumerated().flatMap { index, control in
-                control.subviews.enumerated().flatMap { childIndex, view in
+            let unlensedIconColor = presentation.colors.text
+            let sources: [LiquidGlassLensContentSource] = reorderGesture != nil || pickup != nil ? [] : itemControls.enumerated().flatMap { index, control -> [LiquidGlassLensContentSource] in
+                guard control.layer?.animation(forKey: "position") == nil else {
+                    return []
+                }
+                return control.subviews.enumerated().flatMap { childIndex, view -> [LiquidGlassLensContentSource] in
+                    guard view !== pickup else {
+                        return []
+                    }
                     if childIndex == 0 {
                         return tabs[index].lensContentSources(for: view, lensedTintColor: presentation.colors.accentIcon, unlensedTintColor: unlensedIconColor)
                     }
                     return [LiquidGlassLensContentSource(view: view)]
                 }
             }
-            nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, restingBlurRadius: 16, restingTintColor: selectionView.backgroundColor, contentSources: sources)
+            nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, restingBlurRadius: 16, restingTintColor: selectionView.backgroundColor, restingVisibility: hidesRestingSelection ? 0 : 1, contentSources: sources)
             selectionView.layer?.removeAnimation(forKey: "opacity")
             selectionView.alphaValue = 0
             liftedGlass.alphaValue = 0
             return
         }
-        selectionView.alphaValue = 1
+        transition.updateAlpha(view: selectionView, alpha: hidesRestingSelection ? 0 : 1)
         transition.updateFrame(view: liftedGlass, frame: frame.size.bounds)
         liftedGlass.cornerRadius = frame.height / 2
         liftedGlass.updateLayout(size: frame.size, transition: transition)
@@ -556,6 +796,7 @@ public class TabBarView: View {
         }
         requestedLensMode = enabled
         finishGesture()
+        clearPickup()
         if let nativeLens {
             nativeLens.reset()
             for control in itemControls {
@@ -606,9 +847,18 @@ public class TabBarView: View {
         return false
     }
 
+    private func itemIndex(at point: NSPoint) -> Int? {
+        if allowsReordering {
+            return itemControls.indices.min {
+                abs(displayedCenter(of: itemControls[$0]) - point.x) < abs(displayedCenter(of: itemControls[$1]) - point.x)
+            }
+        }
+        return itemLayout.index(at: point)
+    }
+
     public override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
-        guard !isHidden, NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).contains(local), let index = itemLayout.index(at: local) else {
+        guard !isHidden, NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).contains(local), let index = itemIndex(at: local) else {
             return nil
         }
         return itemControls[index]

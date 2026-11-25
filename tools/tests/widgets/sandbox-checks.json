@@ -1,0 +1,187 @@
+{
+  "auto/26-context-copy": {
+    "htmlSha256": "0109917dc4280612d826d9df680cb0c70af47760a2344af1dbdeccee0a7580da",
+    "checks": [
+      [
+        "tw.request",
+        "a request without a tap is refused with NOT_ALLOWED"
+      ],
+      [
+        "tw.request",
+        "a request on a tap is refused with NOT_ALLOWED too"
+      ],
+      [
+        "tw.context",
+        "isForward is true, isPreview false"
+      ],
+      [
+        "tw.context",
+        "chatType is "
+      ],
+      [
+        "tw.context",
+        "viewer is null"
+      ],
+      [
+        "tw.bot-data",
+        "chatData is null, publicData \"conf-public\""
+      ]
+    ]
+  },
+  "auto/26-context-group": {
+    "htmlSha256": "0bcb40693cd339bd372d4b60333d350b5462e7acb9055baf51cf0f58e6e816d4",
+    "checks": [
+      [
+        "tw.request",
+        "a request without a tap is refused with NOT_ALLOWED"
+      ],
+      [
+        "tw.request",
+        "a request on a tap resolves with the bot's { result }"
+      ],
+      [
+        "tw.context",
+        "isForward is false, isPreview false"
+      ],
+      [
+        "tw.context",
+        "chatType is group or supergroup"
+      ],
+      [
+        "tw.context",
+        "viewer is the user (an id)"
+      ],
+      [
+        "tw.bot-data",
+        "chatData is \"conf-chat\", publicData \"conf-public\""
+      ]
+    ]
+  },
+  "auto/26-context-live-copy": {
+    "htmlSha256": "290d6c4696f00623bc69147618f8acc61f21185c5ba6b1d899c312a3d608bff8",
+    "checks": [
+      [
+        "tw.request",
+        "a request without a tap is refused with NOT_ALLOWED"
+      ],
+      [
+        "tw.request",
+        "a request on a tap resolves with the bot's { result }"
+      ],
+      [
+        "tw.context",
+        "isForward is true, isPreview false"
+      ],
+      [
+        "tw.context",
+        "chatType is "
+      ],
+      [
+        "tw.context",
+        "viewer is the user (an id)"
+      ],
+      [
+        "tw.bot-data",
+        "chatData is null, publicData \"conf-public\""
+      ]
+    ]
+  },
+  "auto/26-context-no-queries": {
+    "htmlSha256": "05c0749eebacd6890d0997210aab7c82722b1f093c23cd94e1a40a5143c70daa",
+    "checks": [
+      [
+        "tw.request",
+        "a request without a tap is refused with NOT_ALLOWED"
+      ],
+      [
+        "tw.request",
+        "a request on a tap is refused with NOT_ALLOWED too"
+      ],
+      [
+        "tw.context",
+        "isForward is false, isPreview false"
+      ],
+      [
+        "tw.context",
+        "chatType is private"
+      ],
+      [
+        "tw.context",
+        "viewer is null"
+      ],
+      [
+        "tw.bot-data",
+        "chatData is \"conf-chat\", publicData \"conf-public\""
+      ]
+    ]
+  },
+  "auto/26-context-preview": {
+    "htmlSha256": "78c95799a245b8c93edf05d4dccce6410ab0b2bddf92ae5f90b3c3302bff6233",
+    "checks": [
+      [
+        "tw.request",
+        "a request without a tap is refused with NOT_ALLOWED"
+      ],
+      [
+        "tw.context",
+        "isForward is false, isPreview true"
+      ],
+      [
+        "tw.context",
+        "chatType is "
+      ],
+      [
+        "tw.context",
+        "viewer is null"
+      ],
+      [
+        "tw.bot-data",
+        "chatData is \"conf-chat\", publicData \"conf-public\""
+      ]
+    ]
+  },
+  "auto/26-context-private": {
+    "htmlSha256": "b40e1a7af294e01069f2149e6d340a7fd5426d12ffd9612341d0e323c810a604",
+    "checks": [
+      [
+        "tw.request",
+        "a request without a tap is not refused (background requests are allowed here)"
+      ],
+      [
+        "tw.request",
+        "a request on a tap resolves with the bot's { result }"
+      ],
+      [
+        "tw.context",
+        "isForward is false, isPreview false"
+      ],
+      [
+        "tw.context",
+        "chatType is private"
+      ],
+      [
+        "tw.context",
+        "viewer is the user (an id)"
+      ],
+      [
+        "tw.bot-data",
+        "chatData is \"conf-chat\", publicData \"conf-public\""
+      ]
+    ]
+  },
+  "auto/17-drag-hover": {
+    "htmlSha256": "40eee10cd49f6df4bf709faffd87dbe6ce9758647c29633d828ec2c1ab436725",
+    "allowedSkips": [
+      [
+        "input.touch-events",
+        "no touch events on a touch client, pointer events only",
+        "no touch input here"
+      ],
+      [
+        "sel.hover",
+        ":hover applies under a pointer",
+        "touch client: no hover"
+      ]
+    ]
+  }
+}

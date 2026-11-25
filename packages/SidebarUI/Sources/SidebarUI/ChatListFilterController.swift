@@ -13,6 +13,7 @@ import TelegramCore
 import InAppSettings
 import TGUIKit
 import InputView
+import AppAnalytics
 
 
 private enum FolderColorEntryId: Hashable {
@@ -884,7 +885,7 @@ public func ChatListFilterController(context: any AccountContextProtocol, enviro
 
     let title = environment.titleInputState(filter)
 
-    let initialState = State(filter: filter, isNew: isNew, showAllInclude: false, showAllExclude: false, changedName: !isNew, inviteLinks: nil, creatingLink: false, linkSaving: nil, inputState: title, nameAnimation: true, inputStateEquals: environment.inputStatesEqual)
+    let initialState = State(filter: filter, isNew: isNew, showAllInclude: false, showAllExclude: false, changedName: !isNew, inviteLinks: nil, creatingLink: false, linkSaving: nil, inputState: title, nameAnimation: isNew || filter.enableAnimations, inputStateEquals: environment.inputStatesEqual)
 
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
@@ -1421,6 +1422,7 @@ public func ChatListFilterController(context: any AccountContextProtocol, enviro
 
 
     let controller = InputDataController(dataSignal: dataSignal, title: isNew ? strings().chatListFilterNewTitle : strings().chatListFilterTitle, removeAfterDisappear: false)
+    controller.analyticsScreen = .settingsFoldersFolder
 
 
     controller.backInvocation = { data, f in

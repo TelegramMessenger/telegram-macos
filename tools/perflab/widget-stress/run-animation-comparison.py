@@ -30,7 +30,7 @@ def main():
     reporter = module('widget_reporter', folder / 'report-all-widgets.py')
     args.out.mkdir(parents=True, exist_ok=True)
     root = folder.parents[2]
-    resource = root / 'packages/HTMLBubbles/Sources/HTMLBubbles/Resources/widget-sandbox/showcase/stress'
+    resource = root / 'packages/HTMLBubbles/Tests/HTMLBubblesTests/Fixtures/widget-sandbox/showcase/stress'
     fixtures = ['order-book', 'canvas-market', 'clipped-ticker', 'canvas-atlas', 'reflow-cards', 'orbit-wall']
     method = dict(binary_sha256=runner.digest(args.lab), seconds=8, warmup=2, webkit_timeline_seconds=5,
                   rounds=args.rounds, native_samples='TW_SLOW_MS=0 layout pipeline passes with t >= 2 seconds',

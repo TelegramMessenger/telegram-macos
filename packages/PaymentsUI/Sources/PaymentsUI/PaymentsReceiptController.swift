@@ -16,6 +16,7 @@ import CurrencyFormat
 import InAppSettings
 import TelegramMediaUtils
 import AlertsUI
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -190,8 +191,14 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-
 public func PaymentsReceiptController(context: (any AccountContextProtocol), messageId: MessageId, invoice: TelegramMediaInvoice) -> InputDataModalController {
+    return PaymentsReceiptController(context: context, messageId: messageId, invoice: invoice, analyticsContext: nil)
+}
+
+public func PaymentsReceiptController(context: (any AccountContextProtocol), messageId: MessageId, invoice: TelegramMediaInvoice, analyticsContext: AnalyticsContext?) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: messageId.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let closed = Atomic(value: false)
     var close:(()->Void)? = nil
     let actionsDisposable = DisposableSet()
@@ -207,13 +214,17 @@ public func PaymentsReceiptController(context: (any AccountContextProtocol), mes
 
     let arguments = Arguments(context: context)
     
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = origin.preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
     let controller = InputDataController(dataSignal: signal, title:strings().checkoutReceiptTitle)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .paymentsReceipt
     
     let dismiss = {
+        let delivery = origin.beginPresentation()
+        defer { delivery.end() }
         _ = closed.swap(true)
         actionsDisposable.dispose()
     }
@@ -232,6 +243,7 @@ public func PaymentsReceiptController(context: (any AccountContextProtocol), mes
         dismiss()
         close()
     })
+    modalController.analyticsContext = origin
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()
@@ -246,9 +258,12 @@ public func PaymentsReceiptController(context: (any AccountContextProtocol), mes
     let receipt: Signal<BotPaymentReceipt, NoError> = context.engine.payments.requestBotPaymentReceipt(messageId: messageId) |> take(1) |> `catch` { _ in .complete() }
     let receiptAndPeer = receipt |> mapToSignal { value -> Signal<(BotPaymentReceipt, Peer?), NoError> in
         guard !closed.with({ $0 }) else { return .complete() }
-        return (context.account.postbox.transaction { $0.getPeer(value.botPaymentId) }) |> map { (value, $0) }
+        let peerOrigin = origin.restricting(peerId: value.botPaymentId)
+        let delivery = peerOrigin.beginPresentation()
+        defer { delivery.end() }
+        return peerOrigin.preservingPresentation(context.account.postbox.transaction { $0.getPeer(value.botPaymentId) }) |> map { (value, $0) }
     }
-    actionsDisposable.add((receiptAndPeer |> deliverOnMainQueue).start(next: { receipt, botPeer in
+    actionsDisposable.add(origin.preservingPresentation(receiptAndPeer |> deliverOnMainQueue).start(next: { receipt, botPeer in
         updateState { current in
             var current = current
             current.receipt = receipt

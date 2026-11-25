@@ -22,7 +22,7 @@ let deps: [(String, String)] = [
     ("PremiumUI", "../PremiumUI"),
     ("InactiveChannelsUI", "../InactiveChannelsUI"),
     ("SelectPeersUI", "../SelectPeersUI"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

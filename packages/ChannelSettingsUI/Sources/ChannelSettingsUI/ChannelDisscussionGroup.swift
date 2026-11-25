@@ -14,6 +14,7 @@ import InputDataUI
 import ShortPeerRow
 import AlertsUI
 import ChatUI
+import AppAnalytics
 
 
 private final class DiscussionArguments {
@@ -511,6 +512,7 @@ public func ChannelDiscussionSetupController<Context: AccountContextProtocol>(co
                 
         return .invoked
     })
+    controller.analyticsScreen = .peerInfoDiscussion
     
     controller.onDeinit = {
         actionsDisposable.dispose()

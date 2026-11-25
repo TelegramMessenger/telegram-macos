@@ -8,6 +8,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import Localization
+import AppAnalytics
 
 public enum InputPasswordValueError {
     case generic
@@ -116,6 +117,7 @@ public func InputPasswordController(context: any AccountContextProtocol, title: 
     }, afterDisappear: {
         checkPassword.dispose()
     }, hasDone: true)
+    controller.analyticsScreen = .appPasswordPrompt
     
     controller.autoInputAction = true
     

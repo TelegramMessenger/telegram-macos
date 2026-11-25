@@ -7,7 +7,7 @@ import SwiftSignalKit
 import TelegramCore
 import ObjcUtils
 
-private let se_markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)|@(\\d+)\\s*\\((.+?)\\)"
+private let se_markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let se_markdownRegex = try? NSRegularExpression(pattern: se_markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
 
 

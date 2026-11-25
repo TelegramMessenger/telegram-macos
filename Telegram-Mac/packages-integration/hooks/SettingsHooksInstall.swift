@@ -1,6 +1,7 @@
 import Cocoa
 import ChatHistoryModel
 import ColorPalette
+import MessageUtils
 import Postbox
 import QrStudioUI
 import SettingsUI
@@ -183,11 +184,14 @@ final class QrStudioShareObject: ShareObject {
             let signals = peerIds.map { peerId -> Signal<[MessageId?], NoError> in
                 let threadId = threadIds[peerId] ?? threadId
                 let stars = sendPaidMessageStars[peerId]
-                let send = Sender.enqueue(media: media, context: context, peerId: peerId, replyId: nil, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars)
-                if let comment, !comment.inputText.isEmpty {
-                    return Sender.enqueue(input: comment, context: context, peerId: peerId, replyId: nil, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars) |> then(send)
+                return context.account.postbox.transaction { $0.getPeer(peerId) } |> mapToSignal { peer -> Signal<[MessageId?], NoError> in
+                    let replyId = makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer?.isMonoForum ?? false)
+                    let send = Sender.enqueue(media: media, context: context, peerId: peerId, replyId: replyId, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars)
+                    if let comment, !comment.inputText.isEmpty {
+                        return Sender.enqueue(input: comment, context: context, peerId: peerId, replyId: replyId, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars) |> then(send)
+                    }
+                    return send
                 }
-                return send
             }
             return combineLatest(signals) |> take(1) |> ignoreValues
         }
@@ -394,9 +398,9 @@ func installSettingsUIHooks() {
     }, authorizationStatus: { context in
         return UNUserNotifications.recurrentAuthorizationStatus(context as! AccountContext) |> map { NotificationAuthorizationStatus(rawValue: $0.rawValue) ?? .notDetermined }
     }, wallet: makeSettingsWalletHooks())
-    hooks.showStoriesWithContext = { context, isHidden, initialId, singlePeer in
+    hooks.showStoriesWithContext = { context, isHidden, initialId, singlePeer, analyticsContext in
         guard let context = context as? AccountContext else { return }
-        StoryModalController.ShowStories(context: context, isHidden: isHidden, initialId: initialId, singlePeer: singlePeer)
+        StoryModalController.ShowStories(context: context, isHidden: isHidden, initialId: initialId, singlePeer: singlePeer, analyticsContext: analyticsContext)
     }
     SettingsHooks.install(hooks)
 }
@@ -444,8 +448,8 @@ private func makeSettingsNavigationHooks() -> SettingsNavigationHooks {
     hooks.openQrStudio = { context, morphSource in
         showQrStudio(context: context, peerId: context.peerId, morphSource: morphSource)
     }
-    hooks.openQrStudioWithContext = { context, morphSource in
-        showQrStudio(context: context, peerId: context.peerId, morphSource: morphSource)
+    hooks.openQrStudioWithContext = { context, morphSource, analyticsContext in
+        showQrStudio(context: context, peerId: context.peerId, morphSource: morphSource, analyticsContext: analyticsContext)
     }
     hooks.prefetchQrStudio = { context in
         prefetchQrStudio(context: context)
@@ -573,8 +577,8 @@ private func makeSettingsNavigationHooks() -> SettingsNavigationHooks {
     hooks.openWebBot = { context, bot in
         openWebBot(bot, context: context)
     }
-    hooks.openWebBotWithContext = { context, bot in
-        openWebBot(bot, context: context)
+    hooks.openWebBotWithContext = { context, bot, analyticsContext in
+        openWebBot(bot, context: context, analyticsContext: analyticsContext)
     }
     hooks.openInstantView = { context, url, webPage, anchor in
         BrowserStateContext.get(context).open(tab: .instantView(url: url, webPage: webPage, anchor: anchor))

@@ -8,6 +8,7 @@ import TelegramContext
 import TelegramUtils
 import InAppSettings
 import ChatModeTypes
+import AppAnalytics
 
 public protocol PremiumStickerView: AnyObject {
     func updatePremiumSticker(file: TelegramMediaFile, size: NSSize, context: any AccountContextProtocol, tint: NSColor?, animated: Bool)
@@ -22,42 +23,54 @@ public struct PremiumHooks {
     public let openBusinessFeature: (any AccountContextProtocol, PremiumValue) -> Void
     public let preloadVideo: (any AccountContextProtocol, TelegramMediaFile) -> Signal<Never, NoError>
     public let openLink: (any AccountContextProtocol, String, @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) -> Void
-    public var openLinkWithContext: ((any AccountContextProtocol, String, @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) -> Void)?
+    public var openLinkWithContext: ((any AccountContextProtocol, String, @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void, AnalyticsContext) -> Void)?
 
-    public func openLinkObserved(_ context: any AccountContextProtocol, _ url: String, _ openInfo: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
+    public func openLinkObserved(_ context: any AccountContextProtocol, _ url: String, _ openInfo: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void, analyticsContext: AnalyticsContext) {
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         let callback: (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void = { peerId, isChat, messageId, action in
+            let destination = analyticsContext.restricting(peerId: peerId)
+            let delivery = destination.beginPresentation()
+            defer { delivery.end() }
             openInfo(peerId, isChat, messageId, action)
         }
         if let openLinkWithContext {
-            openLinkWithContext(context, url, callback)
+            openLinkWithContext(context, url, callback, analyticsContext)
         } else {
             openLink(context, url, callback)
         }
     }
 
-    public var showStickerPackPreviewWithContext: ((any AccountContextProtocol, String) -> Void)?
-    public var openBusinessFeatureWithContext: ((any AccountContextProtocol, PremiumValue) -> Void)?
-    public var openChatWithContext: ((any AccountContextProtocol, PeerId, ChatInitialAction?) -> Void)?
+    public var showStickerPackPreviewWithContext: ((any AccountContextProtocol, String, AnalyticsContext) -> Void)?
+    public var openBusinessFeatureWithContext: ((any AccountContextProtocol, PremiumValue, AnalyticsContext) -> Void)?
+    public var openChatWithContext: ((any AccountContextProtocol, PeerId, ChatInitialAction?, AnalyticsContext) -> Void)?
 
-    public func openChatObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ action: ChatInitialAction?) {
+    public func openChatObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ action: ChatInitialAction?, analyticsContext inheritedContext: AnalyticsContext) {
+        let analyticsContext = inheritedContext.restricting(peerId: peerId)
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         if let openChatWithContext {
-            openChatWithContext(context, peerId, action)
+            openChatWithContext(context, peerId, action, analyticsContext)
         } else {
             openChat(context, peerId, action)
         }
     }
 
-    public func showStickerPackPreviewObserved(_ context: any AccountContextProtocol, _ shortName: String) {
+    public func showStickerPackPreviewObserved(_ context: any AccountContextProtocol, _ shortName: String, analyticsContext: AnalyticsContext) {
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         if let showStickerPackPreviewWithContext {
-            showStickerPackPreviewWithContext(context, shortName)
+            showStickerPackPreviewWithContext(context, shortName, analyticsContext)
         } else {
             showStickerPackPreview(context, shortName)
         }
     }
 
-    public func openBusinessFeatureObserved(_ context: any AccountContextProtocol, _ value: PremiumValue) {
+    public func openBusinessFeatureObserved(_ context: any AccountContextProtocol, _ value: PremiumValue, analyticsContext: AnalyticsContext) {
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         if let openBusinessFeatureWithContext {
-            openBusinessFeatureWithContext(context, value)
+            openBusinessFeatureWithContext(context, value, analyticsContext)
         } else {
             openBusinessFeature(context, value)
         }

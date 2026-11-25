@@ -511,6 +511,17 @@ private func entries(_ state:State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 @available(macOS 10.13, *)
+public func LocationModalPreview(_ context: any AccountContextProtocol, address: String) -> Signal<InputDataModalController?, NoError> {
+    return geocodeLocation(address: address) |> deliverOnMainQueue |> map { coordinates in
+        guard let coordinates else {
+            return nil
+        }
+        let venue = MediaArea.Venue(latitude: coordinates.0, longitude: coordinates.1, venue: MapVenue(title: address, address: nil, provider: nil, id: nil, type: nil), address: nil, queryId: nil, resultId: nil)
+        return LocationModalPreview(context, venue: venue, peer: nil, presentation: theme)
+    }
+}
+
+@available(macOS 10.13, *)
 public func LocationModalPreview(_ context: (any AccountContextProtocol), venue: MediaArea.Venue, peer: Peer?, presentation: TelegramPresentationTheme) -> InputDataModalController {
     
     let initialState = State(map: venue, peer: peer, userLocation: nil)

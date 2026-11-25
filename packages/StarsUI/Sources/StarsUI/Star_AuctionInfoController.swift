@@ -30,6 +30,7 @@ import LokiRng
 import FoundationUtils
 import InputView
 import InputTextView
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -259,6 +260,7 @@ public func Star_AuctionInfoController(context: (any AccountContextProtocol), gi
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .giftsAuctionAbout
     
     controller.onDeinit = {
         actionsDisposable.dispose()

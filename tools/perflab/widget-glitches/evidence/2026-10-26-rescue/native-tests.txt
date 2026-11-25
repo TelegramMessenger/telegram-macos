@@ -1,0 +1,55 @@
+Test Suite 'Selected tests' started at 2026-10-26 12:33:19.672 PM.
+Test Suite 'TwidgetRendererTests.xctest' started at 2026-10-26 12:33:19.673 PM.
+Test Suite 'AnimationSettlementRegressionTests' started at 2026-10-26 12:33:19.673 PM.
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testAncestorVisibilityRestartsTheRendererClock]' started.
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testAncestorVisibilityRestartsTheRendererClock]' passed (0.583 seconds).
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testBackgroundExecutorSettlesCSSAndWebAnimationPixels]' started.
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testBackgroundExecutorSettlesCSSAndWebAnimationPixels]' passed (5.658 seconds).
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testImplicitScaleAnimationRestoresOriginalPixels]' started.
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testImplicitScaleAnimationRestoresOriginalPixels]' passed (2.799 seconds).
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testRecordedPackingOnBackgroundExecutor]' started.
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testRecordedPackingOnBackgroundExecutor]' passed (4.281 seconds).
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testReplacingAnimatedPanelChildrenRestoresOriginalPixels]' started.
+Test Case '-[TwidgetRendererTests.AnimationSettlementRegressionTests testReplacingAnimatedPanelChildrenRestoresOriginalPixels]' passed (2.674 seconds).
+Test Suite 'AnimationSettlementRegressionTests' passed at 2026-10-26 12:33:35.670 PM.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 15.996 (15.997) seconds
+Test Suite 'MediaControlTests' started at 2026-10-26 12:33:35.670 PM.
+Test Case '-[TwidgetRendererTests.MediaControlTests testMusicEmojiAndPixelsKeepGeometryAcrossTracksAndQueueChanges]' started.
+Test Case '-[TwidgetRendererTests.MediaControlTests testMusicEmojiAndPixelsKeepGeometryAcrossTracksAndQueueChanges]' passed (8.329 seconds).
+Test Suite 'MediaControlTests' passed at 2026-10-26 12:33:44.000 PM.
+	 Executed 1 test, with 0 failures (0 unexpected) in 8.329 (8.330) seconds
+Test Suite 'WidgetStableGeometryTests' started at 2026-10-26 12:33:44.000 PM.
+Test Case '-[TwidgetRendererTests.WidgetStableGeometryTests testPackingCheckboxesAndProgressUpdateWithoutFrames]' started.
+Test Case '-[TwidgetRendererTests.WidgetStableGeometryTests testPackingCheckboxesAndProgressUpdateWithoutFrames]' passed (1.071 seconds).
+Test Case '-[TwidgetRendererTests.WidgetStableGeometryTests testPhrasebookTabsAndRevealsKeepTheSameInsets]' started.
+Test Case '-[TwidgetRendererTests.WidgetStableGeometryTests testPhrasebookTabsAndRevealsKeepTheSameInsets]' passed (0.871 seconds).
+Test Suite 'WidgetStableGeometryTests' passed at 2026-10-26 12:33:45.942 PM.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 1.942 (1.942) seconds
+Test Suite 'TwidgetRendererTests.xctest' passed at 2026-10-26 12:33:45.942 PM.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 26.267 (26.269) seconds
+Test Suite 'Selected tests' passed at 2026-10-26 12:33:45.942 PM.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 26.267 (26.270) seconds
+ANCESTOR VISIBILITY detached=true preparing=false held=0 throttle-ms=0 tiles=3 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 180.0) scale=2.0 doc=true h=37 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=19 frames=18
+BACKGROUND SETTLED detached=true preparing=false held=0 throttle-ms=0 tiles=3 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 93.0) scale=2.0 doc=true h=93 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=14 frames=2 promoted=[]
+BACKGROUND SETTLED detached=true preparing=false held=0 throttle-ms=0 tiles=3 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 93.0) scale=2.0 doc=true h=93 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=28 frames=4 promoted=[]
+BACKGROUND SETTLED detached=true preparing=false held=0 throttle-ms=0 tiles=3 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 93.0) scale=2.0 doc=true h=93 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=41 frames=6 promoted=[]
+BACKGROUND SETTLED detached=true preparing=false held=0 throttle-ms=0 tiles=3 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 93.0) scale=2.0 doc=true h=93 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=55 frames=8 promoted=[]
+BACKGROUND SETTLED detached=true preparing=false held=0 throttle-ms=0 tiles=3 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 93.0) scale=2.0 doc=true h=93 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=70 frames=10 promoted=[]
+BACKGROUND SETTLED detached=true preparing=false held=0 throttle-ms=0 tiles=3 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 93.0) scale=2.0 doc=true h=93 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=84 frames=12 promoted=[]
+SETTLED SCALE style=nil promoted=[] animated=[]
+SETTLED SCALE style=nil promoted=[] animated=[]
+SETTLED SCALE style=nil promoted=[] animated=[]
+SETTLED SCALE style=nil promoted=[] animated=[]
+RECORDED PACKING box=(14.0, 182.97000122070312, 20.0, 20.0) reference=(14.0, 124.97000122070312, 20.0, 20.0) detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(330.0, 418.0) scale=2.0 doc=true h=418 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=102 frames=80
+RECORDED PACKING category=docs items=(12.0, 119.97000122070312, 306.0, 87.0) row=(12.0, 119.97000122070312, 306.0, 87.0) promoted=[]
+RECORDED PACKING category=all items=(12.0, 119.97000122070312, 306.0, 290.0) row=(12.0, 119.97000122070312, 306.0, 290.0) promoted=[]
+RECORDED PACKING category=clothes items=(12.0, 119.97000122070312, 306.0, 87.0) row=(12.0, 119.97000122070312, 306.0, 87.0) promoted=[]
+RECORDED PACKING category=all items=(12.0, 119.97000122070312, 306.0, 290.0) row=(12.0, 119.97000122070312, 306.0, 290.0) promoted=[]
+RECORDED PACKING category=gear items=(12.0, 119.97000122070312, 306.0, 116.0) row=(12.0, 119.97000122070312, 306.0, 116.0) promoted=[]
+RECORDED PACKING category=all items=(12.0, 119.97000122070312, 306.0, 290.0) row=(12.0, 119.97000122070312, 306.0, 290.0) promoted=[]
+SETTLED PANEL before=(20.0, 52.80000305175781, 80.0, 40.0) after=(20.0, 52.80000305175781, 80.0, 40.0) promoted=[]
+SETTLED PANEL before=(20.0, 52.80000305175781, 80.0, 40.0) after=(20.0, 52.80000305175781, 80.0, 40.0) promoted=[]
+SETTLED PANEL before=(20.0, 52.80000305175781, 80.0, 40.0) after=(20.0, 52.80000305175781, 80.0, 40.0) promoted=[]
+SETTLED PANEL before=(20.0, 52.80000305175781, 80.0, 40.0) after=(20.0, 52.80000305175781, 80.0, 40.0) promoted=[]
+SETTLED PANEL before=(20.0, 52.80000305175781, 80.0, 40.0) after=(20.0, 52.80000305175781, 80.0, 40.0) promoted=[]
+SETTLED PANEL before=(20.0, 52.80000305175781, 80.0, 40.0) after=(20.0, 52.80000305175781, 80.0, 40.0) promoted=[]

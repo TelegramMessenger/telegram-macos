@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class Arguments {
@@ -219,6 +220,7 @@ public func Star_AuctionAcquiredController(context: (any AccountContextProtocol)
         dataSignal: signal,
         title: strings().starAuctionAcquiredItemsBoughtOther(gifts.count)
     )
+    controller.analyticsScreen = .giftsAuctionAcquired
 
     getController = { [weak controller] in
         return controller

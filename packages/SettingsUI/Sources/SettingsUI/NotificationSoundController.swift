@@ -21,6 +21,7 @@ import TelegramMediaUtils
 import AvatarEditorUI
 import Postbox
 import SystemPermissions
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -206,6 +207,7 @@ public func NotificationSoundController(context: any AccountContextProtocol, ton
         playNotificationTone(context: context, sound: tone, list: stateValue.with { $0.list })
         let wasDisabled = stateValue.with { $0.tone == .none }
         if wasDisabled != (tone == .none) {
+            Analytics.shared.send(AnalyticsEvents.settingsChange(.notificationsSound(tone == .none ? .disabled : .enabled)))
         }
         if let updateTone = updateTone {
             updateTone(tone)
@@ -240,6 +242,7 @@ public func NotificationSoundController(context: any AccountContextProtocol, ton
     }))
     
     let controller = InputDataController(dataSignal: signal, title: strings().notificationSoundTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .settingsNotificationsSound
     controller.onDeinit = {
         actionsDisposable.dispose()
     }

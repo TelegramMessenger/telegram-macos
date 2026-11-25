@@ -33,5 +33,14 @@ let package = Package(
                 .product(name: "InAppSettings", package: "InAppSettings", condition: nil),
                 .product(name: "TelegramContext", package: "TelegramContext", condition: nil)
             ]),
+        .testTarget(
+            name: "InAppPurchaseManagerTests",
+            dependencies: [
+                "InAppPurchaseManager",
+                .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
+                .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
+                .product(name: "TelegramContext", package: "TelegramContext", condition: nil)
+            ],
+            path: "Tests/InAppPurchaseManagerTests"),
     ]
 )

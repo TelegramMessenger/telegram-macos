@@ -17,6 +17,7 @@ import InputDataUI
 import GalleryUI
 import PeerMediaUI
 import ChatUI
+import AppAnalytics
 
 
 private struct DownloadItem: Equatable {
@@ -235,40 +236,42 @@ public func DownloadsController<Context: AccountContextProtocol>(context: Contex
     let downloadItems: Signal<(inProgressItems: [DownloadItem], doneItems: [RenderedRecentDownloadItem]), NoError>
     downloadItems = combineLatest(queue: .mainQueue(), (context.fetchManager as! FetchManagerImpl).entriesSummary, recentItems)
     |> mapToSignal { entries, recentDownloadItems -> Signal<(inProgressItems: [DownloadItem], doneItems: [RenderedRecentDownloadItem]), NoError> in
-        var itemSignals: [Signal<DownloadItem?, NoError>] = []
-        
-        for entry in entries {
+        let messageEntries: [(id: MessageId, entry: FetchManagerEntrySummary)] = entries.compactMap { entry in
             switch entry.id.locationKey {
             case let .messageId(id):
-                itemSignals.append(context.account.postbox.transaction { transaction -> DownloadItem? in
-                    if let message = transaction.getMessage(id) {
-                        
-                        let effectiveMedia = message.effectiveMedia
-                        guard var media: Media = effectiveMedia.first(where: { ($0 as? TelegramMediaFile)?.resource.id == entry.resourceReference.resource.id }) ?? effectiveMedia.first else {
-                            return nil
-                        }
-                        if let file = media as? TelegramMediaFile {
-                            if file.resource.id != entry.resourceReference.resource.id {
-                                for alternative in file.alternativeRepresentations {
-                                    if alternative.resource.id == entry.resourceReference.resource.id {
-                                        media = alternative
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                        return DownloadItem(resourceId: entry.resourceReference.resource.id, message: message.withUpdatedMedia([media]), priority: entry.priority, isPaused: entry.isPaused)
-                    }
-                    return nil
-                })
+                return (id, entry)
             default:
-                break
+                return nil
             }
         }
-        
-        return combineLatest(queue: .mainQueue(), itemSignals)
+        if messageEntries.isEmpty {
+            return .single(([], recentDownloadItems))
+        }
+        return context.account.postbox.transaction { transaction -> [DownloadItem] in
+            return messageEntries.compactMap { id, entry -> DownloadItem? in
+                guard let message = transaction.getMessage(id) else {
+                    return nil
+                }
+                let effectiveMedia = message.effectiveMedia
+                guard var media: Media = effectiveMedia.first(where: { ($0 as? TelegramMediaFile)?.resource.id == entry.resourceReference.resource.id }) ?? effectiveMedia.first else {
+                    return nil
+                }
+                if let file = media as? TelegramMediaFile {
+                    if file.resource.id != entry.resourceReference.resource.id {
+                        for alternative in file.alternativeRepresentations {
+                            if alternative.resource.id == entry.resourceReference.resource.id {
+                                media = alternative
+                                break
+                            }
+                        }
+                    }
+                }
+                return DownloadItem(resourceId: entry.resourceReference.resource.id, message: message.withUpdatedMedia([media]), priority: entry.priority, isPaused: entry.isPaused)
+            }
+        }
+        |> deliverOnMainQueue
         |> map { items -> (inProgressItems: [DownloadItem], doneItems: [RenderedRecentDownloadItem]) in
-            return (items.compactMap { $0 }, recentDownloadItems)
+            return (items, recentDownloadItems)
         }
     }
         
@@ -292,6 +295,7 @@ public func DownloadsController<Context: AccountContextProtocol>(context: Contex
     }))
     
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsScreen = .chatListDownloads
     controller.bar = .init(height: 0)
     
     controller.onDeinit = {

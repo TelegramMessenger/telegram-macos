@@ -17,6 +17,15 @@ final class LensSurface {
         "inputKeyFillHighlightEffectOffset", "inputKeyFillHighlightColorBias",
         "inputBlurFillLightenOpacity", "inputBlurFillDarkenOpacity", "inputBlurFillNormalOpacity",
     ]
+    static let tuningBackgroundInputs: Set<String> = [
+        "inputFaceColorMatrixMaxLuma", "inputFaceColorMatrixMaxLumaSDR",
+        "inputRingShadowOffset", "inputRingShadowStrokeWidth", "inputRingShadowBlurRadius", "inputRingShadowOpacity",
+        "inputKeyFillHighlightHeight", "inputKeyFillHighlightAngle", "inputKeyFillHighlightSpread",
+        "inputKeyFillHighlightSpreadSDR", "inputKeyFillHighlightAmount", "inputKeyFillHighlightEffectOffset",
+        "inputKeyFillHighlightColorBias",
+        "inputBlurFillLightenOpacity", "inputBlurFillDarkenOpacity", "inputBlurFillNormalOpacity",
+    ]
+    static let requiredBackgroundInputs = backgroundInputs.subtracting(tuningBackgroundInputs)
     static let foregroundInputs: Set<String> = [
         "inputSourceSublayerName", "inputRefractionAmount", "inputRefractionHeight", "inputRefractionOffset",
         "inputAberrationAmount", "inputAberrationHeight", "inputAberrationOffset", "inputAberrationAngle",
@@ -44,7 +53,7 @@ final class LensSurface {
     }
 
     init?(runtime: LensRuntime) {
-        guard let backgroundFilter = runtime.makeFilter("glassBackground", inputs: Self.backgroundInputs),
+        guard let backgroundFilter = runtime.makeFilter("glassBackground", inputs: Self.requiredBackgroundInputs),
               let foregroundFilter = runtime.makeFilter("glassForeground", inputs: Self.foregroundInputs),
               let highlightFilter = runtime.makeFilter("vibrantColorMatrix", inputs: ["inputColorMatrix", "inputClamp"]),
               let backdropDisplacement = runtime.makeFilter("displacementMap", inputs: ["inputAmount", "inputSourceSublayerName"]),
@@ -79,7 +88,9 @@ final class LensSurface {
         for (key, value) in ["keyHeight": 1.0, "fillHeight": 1.0, "keyAngle": 0.0, "fillAngle": Double.pi,
                              "keySpread": 1.396263401595464, "fillSpread": 1.396263401595464,
                              "keyAmount": 0.5, "fillAmount": 0.5, "diffuseAmountScale": 0.15, "curvature": 0.75] {
-            highlightEffect.setValue(value, forKey: key)
+            if LensRuntime.hasSetter(highlightEffect, key: key) {
+                highlightEffect.setValue(value, forKey: key)
+            }
         }
         highlight = runtime.shape(size: .zero, radius: 0, effect: highlightEffect, name: "lensHighlight")
         let matrix: [Float] = [
@@ -104,26 +115,32 @@ final class LensSurface {
             filter.setValue(name, forKey: "name")
             filter.setValue(field.name!, forKey: "inputSourceSublayerName")
         }
+        let backgroundKeys = Set(backgroundFilter.value(forKey: "inputKeys") as? [String] ?? [])
+        func setBackground(_ value: Any, forKey key: String) {
+            if backgroundKeys.contains(key) {
+                backgroundFilter.setValue(value, forKey: key)
+            }
+        }
         for key in ["inputOuterRefractionAmount", "inputOuterRefractionHeight", "inputRefractionOpacity", "inputBlurRadius",
                     "inputBlurOpacity0", "inputBlurOpacity1", "inputBlurOpacity2", "inputBlurOpacity3",
                     "inputFaceColorMatrixBlack", "inputBleedOpacity", "inputShadowHeight",
                     "inputBlurFillLightenOpacity", "inputBlurFillDarkenOpacity", "inputBlurFillNormalOpacity"] {
-            backgroundFilter.setValue(0.0, forKey: key)
+            setBackground(0.0, forKey: key)
         }
         for key in ["inputFaceOpacity", "inputFaceColorMatrixWhite", "inputFaceColorMatrixSaturation",
                     "inputFaceColorMatrixMaxLuma", "inputFaceColorMatrixMaxLumaSDR"] {
-            backgroundFilter.setValue(1.0, forKey: key)
+            setBackground(1.0, forKey: key)
         }
-        backgroundFilter.setValue(NSColor.clear.cgColor, forKey: "inputFaceColorMatrixFillColor")
-        backgroundFilter.setValue(NSColor.black.cgColor, forKey: "inputShadowColorMatrixFillColor")
-        backgroundFilter.setValue(NSValue(size: NSSize(width: 0, height: 7)), forKey: "inputShadowOffset")
+        setBackground(NSColor.clear.cgColor, forKey: "inputFaceColorMatrixFillColor")
+        setBackground(NSColor.black.cgColor, forKey: "inputShadowColorMatrixFillColor")
+        setBackground(NSValue(size: NSSize(width: 0, height: 7)), forKey: "inputShadowOffset")
         for (key, value) in ["inputShadowOpacity": 0.001, "inputShadowRadius": 8.0, "inputRingShadowOffset": 8.0,
                              "inputRingShadowStrokeWidth": 4.0, "inputRingShadowBlurRadius": 3.0, "inputRingShadowOpacity": 0.1,
                              "inputKeyFillHighlightHeight": 1.0, "inputKeyFillHighlightAngle": Double.pi / 2,
                              "inputKeyFillHighlightSpread": Double.pi / 2, "inputKeyFillHighlightSpreadSDR": Double.pi * 2 / 3,
                              "inputKeyFillHighlightAmount": 0.5, "inputKeyFillHighlightEffectOffset": -1.0,
                              "inputKeyFillHighlightColorBias": -0.3] {
-            backgroundFilter.setValue(value, forKey: key)
+            setBackground(value, forKey: key)
         }
         for (key, value) in ["inputRefractionAmount": 0.0, "inputRefractionHeight": 0.0, "inputRefractionOffset": 0.0,
                              "inputAberrationHeight": 0.0, "inputAberrationAngle": -Double.pi / 12,

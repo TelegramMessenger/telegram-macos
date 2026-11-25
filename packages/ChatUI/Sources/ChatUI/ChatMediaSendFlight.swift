@@ -108,7 +108,7 @@ public final class ChatMediaSendFlight {
 
     public func launch(_ source: ChatMediaSendFlightSource) {
         self.dropPending(animated: false)
-        guard !self.reduceMotion, self.canLaunch(), let view = self.view, let window = view.window, view.tableView.documentOffset.y < 20, let contentView = window.contentView else {
+        guard !self.reduceMotion, self.canLaunch(), let view = self.view, view.chatTheme?.bubbled == true, let window = view.window, view.tableView.documentOffset.y < 20, let contentView = window.contentView else {
             return
         }
 

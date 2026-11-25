@@ -10,6 +10,7 @@ import TelegramTheme
 import ColorPalette
 import ChatHistoryModel
 import Postbox
+import AppAnalytics
 
 
 private let _id_header = InputDataIdentifier("_id_header")
@@ -496,7 +497,10 @@ public struct UserTagInfoConfiguration {
     }
 }
 
-public func UserTagInfoModalController(context: any AccountContextProtocol, configuration: UserTagInfoConfiguration) -> InputDataModalController {
+public func UserTagInfoModalController(context: any AccountContextProtocol, configuration: UserTagInfoConfiguration, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
 
     let actionsDisposable = DisposableSet()
 
@@ -512,16 +516,22 @@ public func UserTagInfoModalController(context: any AccountContextProtocol, conf
     var close:(()->Void)? = nil
 
     let arguments = Arguments(context: context, dismiss: {
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         close?()
     })
 
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = origin.preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments, config: configuration))
     }
 
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .chatMemberTagInfo
 
     controller.validateData = { _ in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         close?()
         return .none
     }
@@ -535,6 +545,7 @@ public func UserTagInfoModalController(context: any AccountContextProtocol, conf
     }, singleButton: true)
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions)
+    modalController.analyticsContext = origin
     modalController._hasBorder = false
 
     close = { [weak modalController] in

@@ -17,6 +17,7 @@ import TelegramMediaUtils
 import AlertsUI
 import LocalAnimations
 import MessageTextUtils
+import AppAnalytics
 
 private enum CommunitySection {
     case joined
@@ -624,6 +625,7 @@ public func CommunityViewController(_ context: (any AccountContextProtocol), com
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().communityViewTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .community
     controller.getTitle = { return stateValue.with { $0.community?.title } ?? strings().communityViewTitle }
     controller.onDeinit = { actionsDisposable.dispose() }
 

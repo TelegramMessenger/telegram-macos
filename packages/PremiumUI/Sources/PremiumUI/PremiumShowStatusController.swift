@@ -21,6 +21,7 @@ import SceneEffects
 import InAppPurchaseManager
 import InlineStickers
 import ObjcUtils
+import AppAnalytics
 
 private final class HeaderItem : GeneralRowItem {
     fileprivate let source: PremiumShowStatusSource
@@ -106,8 +107,8 @@ private final class HeaderItemView : GeneralRowView {
         addSubview(premiumButton)
         animation.layer?.cornerRadius = animation.frame.height * 0.5
         
-        button.layer?.cornerRadius = 10
-        premiumButton.layer?.cornerRadius = 10
+        button.layer?.cornerRadius = 20
+        premiumButton.layer?.cornerRadius = 20
         
         button.set(handler: { [weak self] _ in
             if let arguments = (self?.item as? HeaderItem)?.arguments {
@@ -328,6 +329,7 @@ public func PremiumShowStatusController(context: (any AccountContextProtocol), p
     }
     
     let controller = InputDataController(dataSignal: signal, title: source.title)
+    controller.analyticsScreen = .premiumPrivacyUpsell
     
     controller.onDeinit = {
         actionsDisposable.dispose()

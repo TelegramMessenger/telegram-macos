@@ -10,6 +10,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -72,6 +73,7 @@ public func ReportDetailsController(context: (any AccountContextProtocol), reaso
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().reportAdditionTextButton)
+    controller.analyticsScreen = .reportDetails
     
     controller.onDeinit = {
         actionsDisposable.dispose()

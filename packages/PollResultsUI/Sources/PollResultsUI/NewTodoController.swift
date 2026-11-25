@@ -15,6 +15,7 @@ import TelegramUtils
 import InAppSettings
 import FoundationUtils
 import Strings
+import AppAnalytics
 
 
 
@@ -675,6 +676,13 @@ public func NewTodoController(chatInteraction: any NewPollChatInteraction, sourc
         
         return .default
     })
+    switch source {
+    case .addOption:
+        controller.analyticsScreen = .chatChecklistAddTask
+    case .create, .edit:
+        controller.analyticsScreen = .chatChecklistCreate
+    }
+    
     getController = { [weak controller] in
         return controller
     }

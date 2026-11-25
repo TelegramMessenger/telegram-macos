@@ -13,6 +13,7 @@ import TelegramUtils
 import GeneralRows
 import InputDataUI
 import ChatHistoryModel
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -96,6 +97,7 @@ public func FactCheckController(context: any AccountContextProtocol, message: Me
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().factCheckTitle)
+    controller.analyticsScreen = .chatFactCheck
     
     controller.onDeinit = {
         actionsDisposable.dispose()

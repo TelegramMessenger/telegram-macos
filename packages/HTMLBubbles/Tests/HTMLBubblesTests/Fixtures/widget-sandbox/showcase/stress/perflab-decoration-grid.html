@@ -1,0 +1,79 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:16px 16px 10px}h2{font-size:20px;margin:0 0 10px}.controls{display:flex;gap:8px;flex-wrap:wrap}
+button{background:#293d58;color:white;border:0;border-radius:8px;padding:8px 10px;font:12px -apple-system,sans-serif}
+.summary{margin:0 16px 12px;color:#a6b8cf;line-height:1.4}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:0 12px 12px;box-sizing:border-box}
+.cell{display:flex;align-items:center;justify-content:center;min-width:0;height:138px;box-sizing:border-box;padding:8px;background:#172536;border:1px solid #2a3d54;border-radius:16px}
+.panel{display:flex;flex-direction:column;flex-shrink:0;width:86px;height:114px;box-sizing:border-box;padding:7px;background:#253c50;border:1px solid #658196;border-radius:12px;box-shadow:0 4px 8px #0006}
+.top{display:flex;align-items:center;justify-content:space-between;height:26px;flex-shrink:0}.emblem{display:flex;align-items:center;justify-content:center;width:22px;height:22px;box-sizing:border-box;border:1px solid #a9e3db;border-radius:7px;background:#3c887e;color:#ecfffa;box-shadow:0 2px 3px #0005;font-weight:600}
+.tag{width:23px;height:15px;box-sizing:border-box;border:1px solid #798b9d;border-radius:6px;background:#243344;box-shadow:0 1px 2px #0005;text-align:center;font:8px/13px Menlo,monospace}
+.name{margin-top:5px;font:9px Menlo,monospace;color:#bdccda}.reading{margin-top:3px;font:16px/19px Menlo,monospace;white-space:nowrap}
+.meter{position:relative;flex-shrink:0;height:8px;margin-top:7px;box-sizing:border-box;border:1px solid #7996ab;border-radius:4px;background:#0c1d2c;box-shadow:inset 0 1px 2px #0007}
+.marker{position:absolute;left:2px;top:1px;width:18px;height:4px;border-radius:2px;background:#91e3c6;box-shadow:0 1px 2px #0006}
+.footer{margin-top:5px;font:8px/10px Menlo,monospace;color:#a9bfd1}
+.warm .panel{background:#504132;border-color:#a18a69}.warm .emblem{background:#a57535;border-color:#efd19f}.warm .marker{background:#f4cb84}
+.plum .panel{background:#48384f;border-color:#9b7aa3}.plum .emblem{background:#88578c;border-color:#dfb8e5}.plum .marker{background:#dfaae9}
+.alpha .panel{opacity:.82;background:rgba(56,91,118,.7);border-color:rgba(177,213,239,.65);box-shadow:0 4px 8px #0007,inset 0 1px 2px #ffffff20}
+.alpha .tag{margin-left:-5px;background:rgba(60,91,115,.6)}
+.clipped{overflow:hidden;border-radius:20px}.clipped .panel{transform:translateX(18px);border-radius:16px 7px 16px 7px;box-shadow:0 4px 10px #0009}
+.rotated .panel{transform:rotate(2deg);border-width:2px;border-color:#9bb9cc;box-shadow:2px 4px 8px #0007}
+</style>
+<header><h2>Decoration grid</h2><div class="controls"><button id="pause">Pause</button><button id="resize">Lock width</button><button id="count">96 panels</button><button id="freeze">Freeze</button></div></header>
+<p class="summary" id="summary">96 fixed flex panels · opaque, alpha, clipped and rotated · changing readings and indicators</p>
+<div class="grid" id="grid"></div>
+<script>
+const grid=document.getElementById('grid'),pause=document.getElementById('pause'),resize=document.getElementById('resize'),countButton=document.getElementById('count'),summary=document.getElementById('summary');
+const variants=['opaque','alpha','clipped','rotated'],palettes=['cool','warm','plum'];
+let panels=[],markers=[],readings=[];
+let count=96,running=true,resizing=true,time=0,previous=null,frameID=0,frames=0;
+function build(next){
+  count=next;
+  let html='';
+  for(let i=0;i<count;i++){
+    html+='<div class="cell '+variants[i%4]+' '+palettes[Math.floor(i/4)%3]+'"><div class="panel"><div class="top"><span class="emblem">'+String(i%9+1)+'</span><span class="tag">'+String(i%4+1)+'/4</span></div><div class="name">D'+String(i+1).padStart(3,'0')+'</div><div class="reading">0.00</div><div class="meter"><div class="marker"></div></div><div class="footer">'+variants[i%4]+'</div></div></div>';
+  }
+  grid.innerHTML=html;
+  panels=grid.querySelectorAll('.panel');markers=grid.querySelectorAll('.marker');
+  readings=Array.from(grid.querySelectorAll('.reading'),function(item){return item.firstChild;});
+  countButton.textContent=count+' panels';
+  summary.textContent=count+' fixed flex panels · opaque, alpha, clipped and rotated · '+Math.ceil(count/4)+' readings change per frame';
+  draw(time,true,true);
+}
+function draw(t,all,initializeWidth){
+  if(resizing||initializeWidth)grid.style.width=(96+4*Math.sin(t*.71)).toFixed(3)+'%';
+  for(let i=0;i<count;i++){
+    const phase=i*.27;
+    markers[i].style.transform='translateX('+(20+18*Math.sin(t*.93+phase)).toFixed(3)+'px)';
+    if(i%4===3)panels[i].style.transform='translateX('+(1.5*Math.sin(t*.57+phase)).toFixed(3)+'px) rotate('+(2.25*Math.sin(t*.73+phase)).toFixed(3)+'deg)';
+    if(all||i%4===frames%4)readings[i].data=(50+49*Math.sin(t+phase)).toFixed(2);
+  }
+}
+function frame(ms){
+  frameID=0;
+  if(!running)return;
+  if(previous!==null)time+=(ms-previous)/1000;
+  previous=ms;draw(time,false,false);frames++;
+  frameID=requestAnimationFrame(frame);
+}
+function setRunning(value){
+  running=value;previous=null;
+  if(frameID){cancelAnimationFrame(frameID);frameID=0;}
+  pause.textContent=running?'Pause':'Resume';
+  if(running)frameID=requestAnimationFrame(frame);
+}
+function freeze(){
+  setRunning(false);resizing=true;time=1.25;frames=0;
+  resize.textContent='Lock width';draw(time,true,true);
+}
+pause.onclick=function(){setRunning(!running);};
+resize.onclick=function(){resizing=!resizing;resize.textContent=resizing?'Lock width':'Unlock width';};
+countButton.onclick=function(){build(count===24?48:count===48?96:24);};
+document.getElementById('freeze').onclick=freeze;
+window.stress={
+  freeze:freeze,
+  resume:function(){setRunning(true);},
+  setCount:function(value){build(Math.max(24,Math.min(96,Math.round(Number(value)||96))));},
+  describe:function(){return {panels:count,fixedWidth:86,fixedHeight:114,variants:variants,roundedDecorations:count*6,movingIndicators:count,rotatingPanels:Math.floor(count/4),readingsPerFrame:Math.ceil(count/4),time:time,running:running,resizing:resizing};}
+};
+build(count);frameID=requestAnimationFrame(frame);
+</script>

@@ -26,10 +26,11 @@ public final class ChunkedNativeMediaPlayer : View, UniversalVideoContentView {
         return self.reference
     }
 
-    public init(postbox: Postbox, reference: FileMediaReference, fetchAutomatically: Bool = false) {
+    public init(postbox: Postbox, reference: FileMediaReference, fetchAutomatically: Bool = false, preventsCapture: Bool = false) {
         self.postbox = postbox
         self.reference = reference
         let mediaPlayerView = MediaPlayerView()
+        mediaPlayerView.preventsCapture = preventsCapture
         self.mediaPlayerView = mediaPlayerView
         self.mediaPlayer = ChunkMediaPlayerV2(
             params: ChunkMediaPlayerV2.MediaDataReaderParams(useV2Reader: true),

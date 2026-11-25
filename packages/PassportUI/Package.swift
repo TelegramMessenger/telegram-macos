@@ -10,6 +10,7 @@ let package = Package(
     ],
     dependencies: [
         .package(name: "ObjcUtils", path: "../ObjcUtils"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox"),
@@ -31,12 +32,14 @@ let package = Package(
         .package(name: "TGPassportMRZ", path: "../TGPassportMRZ"),
         .package(name: "OCR", path: "../OCR"),
         .package(name: "FilePanels", path: "../FilePanels"),
+        .package(name: "PhoneInputUI", path: "../PhoneInputUI"),
     ],
     targets: [
         .target(
             name: "PassportUI",
             dependencies: [
                 .product(name: "ObjcUtils", package: "ObjcUtils", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
                 .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
@@ -58,6 +61,7 @@ let package = Package(
                 .product(name: "TGPassportMRZ", package: "TGPassportMRZ", condition: nil),
                 .product(name: "OCR", package: "OCR", condition: nil),
                 .product(name: "FilePanels", package: "FilePanels", condition: nil),
+                .product(name: "PhoneInputUI", package: "PhoneInputUI", condition: nil),
             ],
             path: "Sources/PassportUI"),
     ]

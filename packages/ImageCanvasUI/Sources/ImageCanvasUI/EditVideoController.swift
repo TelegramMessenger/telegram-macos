@@ -1,3 +1,4 @@
+import AppAnalytics
 import Cocoa
 import AVFoundation
 import TGUIKit
@@ -175,11 +176,11 @@ private final class EditVideoView: View {
     var onLayout: (() -> Void)?
 
     required init(frame frameRect: NSRect) {
-        self.mute = makeGlassIconButton(NSImage(resource: .iconEditVideoSound).precomposed(.white))
-        self.crop = makeGlassIconButton(NSImage(resource: .iconEditVideoCrop).precomposed(.white))
-        self.paint = makeGlassIconButton(NSImage(resource: .iconEditVideoPaint).precomposed(.white))
-        self.tools = makeGlassIconButton(NSImage(resource: .iconEditVideoTools).precomposed(.white))
-        self.quality = makeGlassIconButton(qualityIcon("HD", color: .white))
+        self.mute = makeGlassIconButton(NSImage(resource: .iconEditVideoSound).precomposed(.white), label: strings().voiceOverCommonMute)
+        self.crop = makeGlassIconButton(NSImage(resource: .iconEditVideoCrop).precomposed(.white), label: strings().voiceOverCommonCrop)
+        self.paint = makeGlassIconButton(NSImage(resource: .iconEditVideoPaint).precomposed(.white), label: strings().voiceOverCommonDraw)
+        self.tools = makeGlassIconButton(NSImage(resource: .iconEditVideoTools).precomposed(.white), label: strings().editVideoControllerTools)
+        self.quality = makeGlassIconButton(qualityIcon("HD", color: .white), label: strings().editVideoControllerQuality)
         super.init(frame: frameRect)
         playButton.set(image: playButtonImage, for: .Normal)
         playButton.autohighlight = false
@@ -187,11 +188,6 @@ private final class EditVideoView: View {
         _ = playButton.sizeToFit(.zero, NSMakeSize(60, 60), thatFit: true)
         playButton.setAccessibilityLabel(strings().voiceOverCommonPlay)
         videoControl.setAccessibilityLabel(strings().voiceOverCommonPlay)
-
-        crop.setAccessibilityLabel(strings().voiceOverCommonCrop)
-        paint.setAccessibilityLabel(strings().voiceOverCommonDraw)
-        tools.setAccessibilityLabel(strings().editVideoControllerTools)
-        quality.setAccessibilityLabel(strings().editVideoControllerQuality)
 
         addSubview(playerView)
         addSubview(videoControl)
@@ -503,6 +499,7 @@ public final class EditVideoController: ModalViewController {
             self?.data.crop = crop
             self?.refreshPreview()
         })
+        editor.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         showModal(with: editor, for: window, animated: false, animationType: .alpha)
     }
 
@@ -517,6 +514,7 @@ public final class EditVideoController: ModalViewController {
             self?.renderOverlay()
             self?.refreshPreview()
         }, closeHandler: {}, alone: true)
+        editor.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         showModal(with: editor, for: window, animated: false, animationType: .alpha)
     }
 
@@ -530,6 +528,7 @@ public final class EditVideoController: ModalViewController {
             self?.data.tint = tint
             self?.refreshPreview()
         })
+        editor.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         showModal(with: editor, for: window, animated: false, animationType: .alpha)
     }
 
@@ -579,7 +578,8 @@ public final class EditVideoController: ModalViewController {
         let info = PendingVideoRenderInfo(duration: data.trimEnd - data.trimStart, dimensions: EditVideoExport.outputDimensions(spec, display: displaySize), hasAudio: hasAudio && !data.isMuted, frame: {
             return EditVideoExport.frame(spec, maxSide: 800).flatMap(editedVideoFrameData)
         })
-        PendingVideoRenders.shared.add(path: url.path, info: info, render: EditVideoExport.export(spec, to: url))
+        let useStreamingWriter = context?.appConfiguration.data?["macos_killswitch_disable_chat_streaming_video_writer"] == nil
+        PendingVideoRenders.shared.add(path: url.path, info: info, rendering: EditVideoExport.exportProgressively(spec, to: url, useStreamingWriter: useStreamingWriter))
         completion(url, data)
         close()
     }

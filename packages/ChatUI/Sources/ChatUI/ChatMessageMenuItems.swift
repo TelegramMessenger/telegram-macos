@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import Cocoa
 import TGUIKit
 import TelegramCore
@@ -95,11 +96,12 @@ public final class ChatMenuItemsData {
     public let notifications: NotificationSoundList?
     public let cachedData: CachedPeerData?
     public let groupped:[Message]?
-    public let folders: [(ChatListFilter, [Peer])]
+    public let folders: [ChatListFilter]
+    public let folderPeers: (ChatListFilter) -> Signal<[Peer], NoError>
     public let isMediaStory: Bool
     public let isRead: Bool
     public let canViewAuthor: Bool
-    public init(chatInteraction: ChatInteraction, message: Message, accountPeer: Peer, resourceData: MediaResourceData?, chatState: ChatState, chatMode: ChatMode, chatLocation: ChatLocation, disableSelectAbility: Bool, isLogInteraction: Bool, canPinMessage: Bool, pinnedMessage: ChatPinnedMessage?, peer: Peer?, peerId: PeerId, fileFinderPath: String?, isStickerSaved: Bool?, dialogs: [Peer], recentUsedPeers: [Peer], favoritePeers: [Peer], recentMedia: [RecentMediaItem], updatingMessageMedia: [MessageId: ChatUpdatingMessageMedia], additionalData: MessageEntryAdditionalData, file: TelegramMediaFile?, image: TelegramMediaImage?, textLayout: (TextViewLayout?, LinkType?)?, availableReactions: AvailableReactions?, notifications: NotificationSoundList?, cachedData: CachedPeerData?, savedStickersCount: Int, savedGifsCount: Int, groupped: [Message]?, folders: [(ChatListFilter, [Peer])], isMediaStory: Bool, isRead: Bool, canViewAuthor: Bool) {
+    public init(chatInteraction: ChatInteraction, message: Message, accountPeer: Peer, resourceData: MediaResourceData?, chatState: ChatState, chatMode: ChatMode, chatLocation: ChatLocation, disableSelectAbility: Bool, isLogInteraction: Bool, canPinMessage: Bool, pinnedMessage: ChatPinnedMessage?, peer: Peer?, peerId: PeerId, fileFinderPath: String?, isStickerSaved: Bool?, dialogs: [Peer], recentUsedPeers: [Peer], favoritePeers: [Peer], recentMedia: [RecentMediaItem], updatingMessageMedia: [MessageId: ChatUpdatingMessageMedia], additionalData: MessageEntryAdditionalData, file: TelegramMediaFile?, image: TelegramMediaImage?, textLayout: (TextViewLayout?, LinkType?)?, availableReactions: AvailableReactions?, notifications: NotificationSoundList?, cachedData: CachedPeerData?, savedStickersCount: Int, savedGifsCount: Int, groupped: [Message]?, folders: [ChatListFilter], folderPeers: @escaping (ChatListFilter) -> Signal<[Peer], NoError>, isMediaStory: Bool, isRead: Bool, canViewAuthor: Bool) {
         self.chatInteraction = chatInteraction
         self.message = message
         self.accountPeer = accountPeer
@@ -131,6 +133,7 @@ public final class ChatMenuItemsData {
         self.savedGifsCount = savedGifsCount
         self.groupped = groupped
         self.folders = folders
+        self.folderPeers = folderPeers
         self.isMediaStory = isMediaStory
         self.isRead = isRead
         self.canViewAuthor = canViewAuthor
@@ -215,15 +218,18 @@ public func chatMenuItemsData(for message: Message, textLayout: (TextViewLayout?
 
     let _dialogs: Signal<[Peer], NoError> = request(nil)
     
-    let _folders: Signal<[(ChatListFilter, [Peer])], NoError> = combineLatest(
-        chatListFilterPreferences(engine: context.engine),
-        ChatHistoryUIHooks.shared.communityFilterCategories(account)
-    ) |> mapToSignal { value, communityCategories in
-        return combineLatest(value.list.filter { !ChatHistoryUIHooks.shared.chatListFilterIsAllChats($0) }.map { item in
-            return request(ChatHistoryUIHooks.shared.chatListFilterPredicate(item, communityCategories)) |> map {
-                (item, $0)
-            }
-        })
+    let _folders: Signal<[ChatListFilter], NoError> = chatListFilterPreferences(engine: context.engine)
+    |> take(1)
+    |> map { value in
+        return value.list.filter { !ChatHistoryUIHooks.shared.chatListFilterIsAllChats($0) }
+    }
+
+    let folderPeers: (ChatListFilter) -> Signal<[Peer], NoError> = { item in
+        return ChatHistoryUIHooks.shared.communityFilterCategories(account)
+        |> take(1)
+        |> mapToSignal { communityCategories in
+            return request(ChatHistoryUIHooks.shared.chatListFilterPredicate(item, communityCategories))
+        }
     }
     
     
@@ -295,7 +301,7 @@ public func chatMenuItemsData(for message: Message, textLayout: (TextViewLayout?
     
     
     return combined |> map { dialogs, recentUsedPeers, favoritePeers, accountPeer, resourceData, fileFinderPath, isStickerSaved, recentMedia, updatingMessageMedia, availableReactions, notifications, cachedData, savedStickersCount, savedGifsCount, groupped, folders in
-        return .init(chatInteraction: chatInteraction, message: message, accountPeer: accountPeer, resourceData: resourceData, chatState: chatState, chatMode: chatMode, chatLocation: chatLocation, disableSelectAbility: disableSelectAbility, isLogInteraction: isLogInteraction, canPinMessage: canPinMessage, pinnedMessage: pinnedMessage, peer: peer, peerId: peerId, fileFinderPath: fileFinderPath, isStickerSaved: isStickerSaved, dialogs: dialogs, recentUsedPeers: recentUsedPeers, favoritePeers: favoritePeers, recentMedia: recentMedia, updatingMessageMedia: updatingMessageMedia, additionalData: additionalData, file: file, image: image, textLayout: textLayout, availableReactions: availableReactions, notifications: notifications, cachedData: cachedData, savedStickersCount: savedStickersCount, savedGifsCount: savedGifsCount, groupped: groupped, folders: folders, isMediaStory: isMediaStory, isRead: isRead, canViewAuthor: canViewAuthor)
+        return .init(chatInteraction: chatInteraction, message: message, accountPeer: accountPeer, resourceData: resourceData, chatState: chatState, chatMode: chatMode, chatLocation: chatLocation, disableSelectAbility: disableSelectAbility, isLogInteraction: isLogInteraction, canPinMessage: canPinMessage, pinnedMessage: pinnedMessage, peer: peer, peerId: peerId, fileFinderPath: fileFinderPath, isStickerSaved: isStickerSaved, dialogs: dialogs, recentUsedPeers: recentUsedPeers, favoritePeers: favoritePeers, recentMedia: recentMedia, updatingMessageMedia: updatingMessageMedia, additionalData: additionalData, file: file, image: image, textLayout: textLayout, availableReactions: availableReactions, notifications: notifications, cachedData: cachedData, savedStickersCount: savedStickersCount, savedGifsCount: savedGifsCount, groupped: groupped, folders: folders, folderPeers: folderPeers, isMediaStory: isMediaStory, isRead: isRead, canViewAuthor: canViewAuthor)
     }
 }
 
@@ -329,6 +335,107 @@ private func copyRichTextMessage(_ message: Message, text: String, page: Instant
     }
 }
 
+private func messageTranslationAnalyticsContext(_ message: Message, chatInteraction: ChatInteraction, inherited: AnalyticsContext? = nil) -> AnalyticsContext {
+    let origin = inherited.map { chatInteraction.captureAnalyticsContext(inherited: $0) } ?? chatInteraction.captureAnalyticsContext(sourcePeerId: message.id.peerId)
+    let restricted = origin.restricting(peerId: message.id.peerId)
+    if message.containsSecretMedia || restricted.isExcluded {
+        origin.scope?.exclude()
+        return Analytics.shared.unresolvedContext()
+    }
+    return restricted
+}
+
+public func messageFileSaveMenuItem(file: TelegramMediaFile, context: any AccountContextProtocol, message: Message, title: String, keyEquivalent: ContextMenuItem.KeyEquiavalent = .none) -> ContextMenuItem {
+    if isHLSVideo(file: file), let quality = HLSQualitySet(baseFile: .message(message: MessageReference(message), media: file)) {
+        let download = ContextMenuItem(strings().galleryContextSaveVideo, itemImage: MenuAnimation.menu_save_as.value)
+        let downloadMenu = ContextMenu()
+        let downloadOrShow: (TelegramMediaFile) -> Void = { file in
+            let status = chatMessageFileStatus(context: context, message: message, file: file)
+            |> take(1)
+            |> deliverOnMainQueue
+
+            _ = status.startStandalone(next: { status in
+                let text: String
+                if status == .Local {
+                    text = strings().galleryContextAlertDownloaded
+                } else {
+                    _ = messageMediaFileInteractiveFetched(context: context, messageId: message.id, messageReference: MessageReference(message), file: file, userInitiated: true).startStandalone()
+                    text = strings().galleryContextAlertDownloading
+                }
+                showModalText(for: context.window, text: text, callback: { _ in
+                    if status == .Local {
+                        showInFinder(file, account: context.account)
+                    } else {
+                        ChatHistoryUIHooks.shared.makeDownloadSearch(context)
+                    }
+                })
+            })
+        }
+        if context.isPremium, let size = file.size {
+            downloadMenu.addItem(ContextMenuItem(strings().galleryContextOriginal + " (\(String.prettySized(with: size)))", handler: {
+                downloadOrShow(file)
+            }))
+        }
+        for (key, value) in quality.qualityFiles.sorted(by: { $0.key < $1.key }) {
+            let quality = "\(ChatNavigationHooks.shared.roundToStandardQuality(key))p"
+            if let size = value.media.size {
+                downloadMenu.addItem(ContextMenuItem(quality + " (\(String.prettySized(with: size)))", handler: {
+                    downloadOrShow(value.media)
+                }))
+            }
+        }
+        download.submenu = downloadMenu
+        return download
+    }
+    return ContextMenuItem(title, handler: {
+        saveAs(file, context: context, message: message)
+    }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: keyEquivalent)
+}
+
+func messageTextRange(of range: NSRange, in shown: NSAttributedString, message: Message) -> NSRange? {
+    let shownText = shown.string as NSString
+    let text = message.text as NSString
+    var replaced: [Int: Int] = [:]
+    for entity in message.textEntities?.entities ?? [] {
+        switch entity.type {
+        case .CustomEmoji, .FormattedDate:
+            replaced[entity.range.lowerBound] = entity.range.count
+        default:
+            break
+        }
+    }
+    var index = 0
+    var location = 0
+    var lower: Int?
+    while index < NSMaxRange(range) {
+        guard index < shownText.length else {
+            return nil
+        }
+        var run = NSRange(location: NSNotFound, length: 0)
+        let rest = NSMakeRange(index, shownText.length - index)
+        let step: (shown: Int, text: Int)
+        if let length = replaced[location], shown.attribute(TextInputAttributes.customEmoji, at: index, longestEffectiveRange: &run, in: rest) != nil || shown.attribute(TextInputAttributes.formattedDate, at: index, longestEffectiveRange: &run, in: rest) != nil {
+            step = (NSMaxRange(run) - index, length)
+        } else if location < text.length, shownText.character(at: index) == text.character(at: location) {
+            step = (1, 1)
+        } else if shownText.character(at: index) == 0x0A {
+            step = (1, 0)
+        } else if location < text.length, let scalar = Unicode.Scalar(text.character(at: location)), CharacterSet.newlines.contains(scalar) {
+            step = (0, 1)
+        } else {
+            return nil
+        }
+        if lower == nil, step.shown > 0, range.location < index + step.shown {
+            lower = location
+        }
+        index += step.shown
+        location += step.text
+    }
+    guard let lower, location <= text.length else {
+        return nil
+    }
+    return NSMakeRange(lower, location - lower)
+}
 
 public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLayout: (TextViewLayout?, LinkType?)?, chatInteraction: ChatInteraction, useGroupIfNeeded: Bool = true, fromAdPromo: Bool = false, source: ChatMenuItemSource = .general) -> Signal<[ContextMenuItem], NoError> {
     
@@ -340,6 +447,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
         return .complete()
     }
 
+    let translationOrigin = messageTranslationAnalyticsContext(message, chatInteraction: chatInteraction)
     let selectedIds = chatInteraction.presentation.selectionState?.selectedIds ?? []
     let selectedMessages: Signal<[Message], NoError>
     if selectedIds.count > 1, selectedIds.contains(message.id) {
@@ -348,7 +456,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
         selectedMessages = .single([])
     }
 
-    return combineLatest(chatMenuItemsData(for: message, textLayout: textLayout, entry: entry, chatInteraction: chatInteraction, source: source), selectedMessages) |> map { [chatInteraction] data, selectedMessages in
+    return combineLatest(queue: .mainQueue(), chatMenuItemsData(for: message, textLayout: textLayout, entry: entry, chatInteraction: chatInteraction, source: source), selectedMessages) |> map { [chatInteraction] data, selectedMessages in
         
         let peer = data.message.peers[data.message.id.peerId]
         let isNotFailed = !message.flags.contains(.Failed) && !message.flags.contains(.Unsent) && !data.message.flags.contains(.Sending)
@@ -417,7 +525,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             if canForwardMessage(replacementMessage, chatInteraction: data.chatInteraction) {
                 let forwardingAction = ChatForwardMenuAction(chatInteraction: data.chatInteraction, sources: [data.message, replacementMessage])
                 items.append(ContextMenuItem(strings().messageContextForward, handler: {
-                    forwardingAction.openPicker(messages: [replacementMessage])
+                    forwardingAction.openPicker(messages: [replacementMessage], entry: .replacementMenu)
                 }, itemImage: MenuAnimation.menu_forward.value))
             }
 
@@ -568,8 +676,15 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             firstBlock.append(ContextMenuItem(strings().chatMessageContextQuote, handler: {
 
                 let quote_length_max = context.appConfiguration.getGeneralValue("quote_length_max", orElse: 1024)
-                if selectedString.length > quote_length_max {
+                let textRange = messageTextRange(of: selectedRange, in: layout.attributedString, message: message)
+                if (textRange?.length ?? selectedString.length) > quote_length_max {
                     alert(for: context.window, info: strings().chatMessageContextQuoteLimitExceed)
+                } else if let textRange {
+                    let quoteText = message.text.nsstring.substring(with: textRange)
+                    let trimmed = trimStringWithEntities(string: quoteText, entities: messageTextEntitiesInRange(entities: message.textEntities?.entities ?? [], range: textRange, onlyQuoteable: true), maxLength: Int(quote_length_max))
+                    let leading = quoteText.utf16.prefix(while: { $0 == 0x20 || $0 == 0x0A }).count
+                    let quote = EngineMessageReplyQuote(text: trimmed.string, offset: textRange.location + leading, entities: trimmed.entities, media: message.media.first)
+                    chatInteraction.setupReplyMessage(message, .init(messageId: message.id, quote: trimmed.string.isEmpty ? nil : quote, innerSubject: nil))
                 } else {
                     let attributed = enititesAttributedStringForText(selectedString).trimmed
                     let entities = messageTextEntitiesInRange(entities: ChatTextInputState(attributedText: attributed, selectionRange: 0..<0).messageTextEntities(), range: attributed.range, onlyQuoteable: true)
@@ -758,9 +873,9 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }, itemImage: MenuAnimation.menu_gift.value))
         }
 
-        if #available(macOS 10.15, *), let action = data.message.media.first as? TelegramMediaAction, case .gramTransfer = action.action, context.appConfiguration.getBoolValue("wallet_available", orElse: false), let user = message.peers[message.id.peerId] as? TelegramUser {
+        if #available(macOS 10.15, *), let action = data.message.media.first as? TelegramMediaAction, case let .gramTransfer(_, peerAddress, _, _, _) = action.action, context.appConfiguration.getBoolValue("wallet_available", orElse: false), let recipient = chatWalletTransferRecipient(chatPeer: message.peers[message.id.peerId], accountPeerId: context.peerId, peerAddress: peerAddress, normalizeAddress: ChatInputUIHooks.shared.walletHooks.normalizeTransferAddress) {
             firstBlock.append(ContextMenuItem(strings().chatMessageMenuItemsSendMoney, handler: {
-                showWalletSendMoney(chatInteraction: data.chatInteraction, user: user, flyIntoChat: false)
+                showWalletSendMoney(chatInteraction: data.chatInteraction, recipient: recipient, flyIntoChat: false)
             }, itemImage: MenuAnimation.menu_gram.value))
         }
         
@@ -846,7 +961,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             let toLang = context.sharedContext.baseSettings.doNotTranslate.union([appAppearance.languageCode])
             if !text.isEmpty, language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                 thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .richMessage(message.id, richAttribute.instantPage), onToneChanged: { tone in
+                    let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                    let presentation = translationContext.beginPresentation()
+                    defer { presentation.end() }
+                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .richMessage(message.id, richAttribute.instantPage), analyticsContext: translationContext, onToneChanged: { tone in
                         data.chatInteraction.setTranslateTone(tone)
                     }, translateEntireChat: {
                         data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -856,7 +974,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }
         }
 
-        if let poll = message.media.first as? TelegramMediaPoll, mode.customChatContents == nil {
+        if let poll = message.media.first as? TelegramMediaPoll, mode.customChatContents == nil, data.textLayout?.0?.selectedRange.hasSelectText != true {
             var text = poll.text
             var entities: [MessageTextEntity] = []
             entities.append(contentsOf: poll.textEntities)
@@ -876,7 +994,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             if language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                 _ = peer?.canSendMessage(data.chatMode.isThreadMode) == true
                 thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .poll(message.id), onToneChanged: { tone in
+                    let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                    let presentation = translationContext.beginPresentation()
+                    defer { presentation.end() }
+                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .poll(message.id), analyticsContext: translationContext, onToneChanged: { tone in
                         data.chatInteraction.setTranslateTone(tone)
                     }, translateEntireChat: {
                         data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -898,9 +1019,12 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 // Rich messages get their own Translate item above (flattened preview + translateRichMessage) —
                 // skip the plain-text item so the menu doesn't offer two.
                 let isRichMessage = message.attributes.contains(where: { $0 is RichTextMessageAttribute })
-                if !isRichMessage, language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
+                if !isRichMessage, !(message.media.first is TelegramMediaPoll), language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                     thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .message(messageId), onToneChanged: { tone in
+                        let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                        let presentation = translationContext.beginPresentation()
+                        defer { presentation.end() }
+                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .message(messageId), analyticsContext: translationContext, onToneChanged: { tone in
                             data.chatInteraction.setTranslateTone(tone)
                         }, translateEntireChat: {
                             data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -958,7 +1082,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 if let linkType = data.textLayout?.1, !protected {
                     text = ChatHistoryLink.copyContextText(from: linkType)
                     thirdBlock.append(ContextMenuItem(text, handler: { [weak textLayout] in
-                        if let textLayout = textLayout {
+                        if let textLayout = textLayout, textLayout.selectedRange.range.length > 0 {
                             let attr = textLayout.attributedString.mutableCopy() as! NSMutableAttributedString
 
                             var effectiveRange = textLayout.selectedRange.range
@@ -1002,7 +1126,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                         if language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                             _ = peer?.canSendMessage(data.chatMode.isThreadMode) == true
                             thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                                showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .selectedText, onToneChanged: { tone in
+                                let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                                let presentation = translationContext.beginPresentation()
+                                defer { presentation.end() }
+                                showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .selectedText, analyticsContext: translationContext, onToneChanged: { tone in
                                     data.chatInteraction.setTranslateTone(tone)
                                 }, translateEntireChat: {
                                     data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -1042,7 +1169,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 if language == nil || !toLang.contains(language!), !isService, translateConfig.canTranslate {
                     _ = peer?.canSendMessage(data.chatMode.isThreadMode) == true
                     thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, [], source: .transcription(messageId), onToneChanged: { tone in
+                        let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                        let presentation = translationContext.beginPresentation()
+                        defer { presentation.end() }
+                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, [], source: .transcription(messageId), analyticsContext: translationContext, onToneChanged: { tone in
                             data.chatInteraction.setTranslateTone(tone)
                         }, translateEntireChat: {
                             data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -1053,21 +1183,25 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }
         }
 
-        if let peer = peer as? TelegramChannel, !isService {
-            if isNotFailed, !message.isScheduledMessage {
-                thirdBlock.append(ContextMenuItem(strings().messageContextCopyMessageLink1, handler: {
-                    _ = showModalProgress(signal: context.engine.messages.exportMessageLink(peerId: peer.id, messageId: messageId, isThread: data.chatLocation.threadMsgId != nil), for: context.window).start(next: { link in
-                        if var link = link {
-                            if case let .pollOption(opaqueIdentifier) = source {
-                                let optionBase64 = opaqueIdentifier.base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
-                                link += link.contains("?") ? "&option=\(optionBase64)" : "?option=\(optionBase64)"
-                            }
-                            copyToClipboard(link)
-                        }
+        if let copyLinkKind = chatMessageCopyLinkKind(messageId: messageId, peer: peer, getPeer: { message.peers[$0] }, isService: isService), isNotFailed, !message.isScheduledMessage {
+            thirdBlock.append(ContextMenuItem(strings().messageContextCopyMessageLink1, handler: {
+                let isThread = copyLinkKind != .directMessages && data.chatLocation.threadMsgId != nil
+                _ = showModalProgress(signal: context.engine.messages.exportMessageLink(peerId: messageId.peerId, messageId: messageId, isThread: isThread), for: context.window).start(next: { exportedLink in
+                    guard var link = chatMessageCopyLink(exportedLink: exportedLink, messageId: messageId, kind: copyLinkKind) else {
+                        return
+                    }
+                    if case let .pollOption(opaqueIdentifier) = source {
+                        let optionBase64 = opaqueIdentifier.base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
+                        link += link.contains("?") ? "&option=\(optionBase64)" : "?option=\(optionBase64)"
+                    }
+                    copyToClipboard(link)
+                    if copyLinkKind == .directMessages {
+                        showModalText(for: context.window, text: strings().contextAlertCopyPrivate)
+                    } else {
                         showSuccess(window: context.window)
-                    })
-                }, itemImage: MenuAnimation.menu_copy_link.value))
-            }
+                    }
+                })
+            }, itemImage: MenuAnimation.menu_copy_link.value))
         }
         
         if canEditMessage(data.message, chatInteraction: data.chatInteraction, context: context), !isService {
@@ -1105,7 +1239,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
         
         if !data.message.isScheduledMessage, let peer = peer, !peer.isDeleted, isNotFailed, data.peerId == data.message.id.peerId, !isService, mode.customChatContents == nil, !isNonReplyableEphemeral {
 
-            let needUnpin = data.pinnedMessage?.others.contains(data.message.id) == true
+            let needUnpin = data.message.tags.contains(.pinned)
             let pinAndOld: Bool
             if let pinnedMessage = data.pinnedMessage, let last = pinnedMessage.others.last {
                 pinAndOld = last > data.message.id
@@ -1165,10 +1299,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             let msgs = useGroupIfNeeded ? (data.groupped ?? [data.message]) : [data.message]
             let forwardingAction = ChatForwardMenuAction(chatInteraction: chatInteraction, sources: [data.message] + msgs)
             let forwardItem = ContextMenuItem(strings().messageContextForward, handler: {
-                forwardingAction.openPicker(messages: msgs)
+                forwardingAction.openPicker(messages: msgs, entry: .messageMenu)
             }, itemImage: MenuAnimation.menu_forward.value)
             let forwardMenu = ContextMenu()
-            let forwardObject = ChatHistoryUIHooks.shared.makeForwardMessagesObjectObserved(context, [data.message], useGroupIfNeeded, chatInteraction.getMessages)
+            let forwardObject = ChatHistoryUIHooks.shared.makeForwardMessagesObjectObserved(context, [data.message], useGroupIfNeeded, chatInteraction.getMessages, analyticsContext: forwardingAction.analyticsContext)
 
             let recent = data.recentUsedPeers.filter {
                 $0.id != context.peerId && $0.canSendMessage(media: message.media.first) && !$0.isDeleted
@@ -1239,11 +1373,16 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                     
                     let folderSubmenu = ContextMenu()
                     for folder in data.folders {
-                        let item = ContextMenuItem(ChatHistoryUIHooks.shared.chatListFilterTitle(folder.0), itemImage: ChatHistoryUIHooks.shared.folderEmoticonDrawable(FolderIcon(folder.0).emoticon).value)
+                        let item = ContextMenuItem(ChatHistoryUIHooks.shared.chatListFilterTitle(folder), itemImage: ChatHistoryUIHooks.shared.folderEmoticonDrawable(FolderIcon(folder).emoticon).value)
                         let submenu = ContextMenu()
-                        
-                        for peer in folder.1 {
-                            submenu.addItem(makeItem(peer))
+                        submenu.asyncItemsProvider = { [weak item] completion in
+                            return (data.folderPeers(folder) |> deliverOnMainQueue).start(next: { peers in
+                                if peers.isEmpty, let item {
+                                    item.submenu = nil
+                                    item.redraw?()
+                                }
+                                completion(peers.map { makeItem($0) })
+                            })
                         }
                         item.submenu = submenu
                         folderSubmenu.addItem(item)
@@ -1253,7 +1392,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 }
                 
                 let more = ContextMenuItem(strings().chatContextForwardMore, handler: {
-                    forwardingAction.openPicker(messages: [message])
+                    forwardingAction.openPicker(messages: msgs, entry: .moreMenu)
                 }, itemImage: MenuAnimation.menu_more.value)
                 items.append(more)
             }
@@ -1295,7 +1434,8 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             if let cachedData = data.cachedData as? CachedChannelData, views >= 100 {
                 if cachedData.flags.contains(.canViewStats) {
                     thirdBlock.append(ContextMenuItem.init(strings().chatContextViewStatistics, handler: {
-                        ChatNavigationHooks.shared.pushMessageStatsObserved(context, data.message)
+                        let origin = chatInteraction.captureAnalyticsContext(sourcePeerId: messageId.peerId)
+                        ChatNavigationHooks.shared.pushMessageStatsObserved(context, data.message, analyticsContext: origin)
                     }, itemImage: MenuAnimation.menu_statistics.value))
                 }
             }
@@ -1347,7 +1487,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                     thirdBlock.append(ContextMenuItem(!saved ? strings().chatContextAddFavoriteSticker : strings().chatContextRemoveFavoriteSticker, handler: {
                         if !saved {
                             let limit = context.isPremium ? context.premiumLimits.stickers_faved_limit_premium : context.premiumLimits.stickers_faved_limit_default
-                            if limit >= data.savedStickersCount, !context.isPremium, !context.premiumIsBlocked {
+                            if limit <= data.savedStickersCount, !context.isPremium, !context.premiumIsBlocked {
                                 showModalText(for: context.window, text: strings().chatContextFavoriteStickersLimitInfo("\(context.premiumLimits.stickers_faved_limit_premium)"), title: strings().chatContextFavoriteStickersLimitTitle, callback: { value in
                                     showPremiumLimit(context: context, type: .faveStickers)
                                 })
@@ -1386,82 +1526,28 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                                 }, completed: {
                                     showModalText(for: context.window, text: strings().chatContextSaveRingtoneRemoveSuccess)
                                 })
-                                
+
                             }, itemImage: MenuAnimation.menu_note_slash.value))
                         }
                     }
-                    if !data.isMediaStory, data.message.pendingProcessingAttribute == nil {
-                        
-                        if isHLSVideo(file: file), let quality = HLSQualitySet(baseFile: FileMediaReference.message(message: .init(message), media: file)) {
-                            
-                            let download = ContextMenuItem(strings().galleryContextSaveVideo, itemImage: MenuAnimation.menu_save_as.value)
-                            let downloadMenu = ContextMenu()
-
-                            let downloadOrShow:(TelegramMediaFile)->Void = { file in
-                                
-                                let status = chatMessageFileStatus(context: context, message: message, file: file)
-                                |> take(1)
-                                |> deliverOnMainQueue
-                                
-                                _ = status.startStandalone(next: { status in
-                                    let text: String
-                                    if status == .Local {
-                                        text = strings().galleryContextAlertDownloaded
-                                    } else {
-                                        _ = messageMediaFileInteractiveFetched(context: context, messageId: message.id, messageReference: .init(message), file: file, userInitiated: true).startStandalone()
-                                        text = strings().galleryContextAlertDownloading
-                                    }
-                                    showModalText(for: context.window, text: text, callback: { _ in
-                                        if status == .Local {
-                                            showInFinder(file, account: context.account)
-                                        } else {
-                                            ChatHistoryUIHooks.shared.makeDownloadSearch(context)
-                                        }
-                                    })
-                                })
-                            }
-                            if context.isPremium {
-                                if let size = file.size {
-                                    downloadMenu.addItem(ContextMenuItem(strings().galleryContextOriginal + " (\(String.prettySized(with: size)))", handler: {
-                                        downloadOrShow(file)
-                                    }))
-                                }
-                            }
-                            let sorted = quality.qualityFiles.sorted(by: { $0.key < $1.key })
-                            for (key, value) in sorted {
-                                let q = "\(ChatNavigationHooks.shared.roundToStandardQuality(key))p"
-                                if let size = value.media.size {
-                                    downloadMenu.addItem(ContextMenuItem(q + " (\(String.prettySized(with: size)))", handler: {
-                                        downloadOrShow(value.media)
-                                    }))
-                                }
-                            }
-                            download.submenu = downloadMenu
-                            thirdBlock.append(download)
-                        } else {
-                            thirdBlock.append(ContextMenuItem(strings().chatContextSaveMedia, handler: {
-                                saveAs(file, account: account)
-                            }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: .cmds))
-                        }
-                       
-                    }
-                    
-                    if data.fileFinderPath != nil {
-                    }
                 }
-               
-            } else if data.image != nil, !data.isMediaStory {
-                if resourceData.complete {
+
+                if !data.isMediaStory, data.message.pendingProcessingAttribute == nil {
+                    thirdBlock.append(messageFileSaveMenuItem(file: file, context: context, message: message, title: strings().chatContextSaveMedia, keyEquivalent: .cmds))
+                }
+
+            } else if let image = data.image, !data.isMediaStory {
+                if let resourceData = data.resourceData, resourceData.complete {
                     let text = strings().chatContextCopyMedia
                     thirdBlock.append(ContextMenuItem(text, handler: {
                         if copyImageToPasteboard(path: resourceData.path) {
                             showModalText(for: context.window, text: strings().contextAlertCopied)
                         }
                     }, itemImage: MenuAnimation.menu_copy_media.value, keyEquivalent: .cmdc))
-                    thirdBlock.append(ContextMenuItem(strings().chatContextSaveMedia, handler: {
-                        savePanel(file: resourceData.path, ext: "jpg", for: context.window)
-                    }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: .cmds))
                 }
+                thirdBlock.append(ContextMenuItem(strings().chatContextSaveMedia, handler: {
+                    saveImageAs(image, context: context, message: message)
+                }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: .cmds))
             }
         }
         
@@ -1488,34 +1574,9 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                         
             fifthBlock.append(reportItem)
         }
-//        if let peer = data.peer as? TelegramChannel, peer.isSupergroup, data.chatMode == .history {
-//            if peer.groupAccess.canEditMembers, let author = data.message.author {
-//                if author.id != context.peerId, data.message.flags.contains(.Incoming), author.isUser || author.isBot {
-//                    fifthBlock.append(ContextMenuItem(strings().chatContextRestrict, handler: {
-//                        _ = showModalProgress(signal: context.engine.peers.fetchChannelParticipant(peerId: chatInteraction.peerId, participantId: author.id), for: context.window).start(next: { participant in
-//                            if let participant = participant {
-//                                switch participant {
-//                                case let .member(memberId, _, _, _, _, _):
-//                                    showModal(with: RestrictedModalViewController(context, peerId: peerId, memberId: memberId, initialParticipant: participant, updated: { updatedRights in
-//                                        _ = context.peerChannelMemberCategoriesContextsManager.updateMemberBannedRights(peerId: peerId, memberId: author.id, bannedRights: updatedRights).startStandalone()
-//                                        _ = showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 3.0).startStandalone()
-//                                    }), for: context.window)
-//                                default:
-//                                    break
-//                                }
-//                            }
-//                        })
-//                    }, itemImage: MenuAnimation.menu_restrict.value))
-//                    
-//                    if data.isLogInteraction {
-//                        fifthBlock.append(ContextMenuItem(strings().chatContextBan, handler: {
-//                            _ = context.peerChannelMemberCategoriesContextsManager.updateMemberBannedRights(peerId: peerId, memberId: author.id, bannedRights: TelegramChatBannedRights(flags: .banReadMessages, untilDate: .max)).startStandalone()
-//                            _ = showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 3.0).startStandalone()
-//                        }, itemMode: .destruct, itemImage: MenuAnimation.menu_ban.value))
-//                    }
-//                }
-//            }
-//        }
+        if chatInteraction.isLogInteraction, let channel = chatInteraction.peer as? TelegramChannel, let author = message.author ?? message.effectiveAuthor {
+            fifthBlock.append(contentsOf: ChatHistoryUIHooks.shared.participantModerationMenuItems(context, channel, author, nil))
+        }
         
         if data.updatingMessageMedia[messageId] != nil {
             fifthBlock.append(ContextMenuItem(strings().chatContextCancelEditing, handler: {

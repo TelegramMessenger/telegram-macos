@@ -32,6 +32,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 
@@ -1232,6 +1233,7 @@ public func StarGift_ModelBuilderController(context: (any AccountContextProtocol
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .giftsAttributes
     
     getController = { [weak controller] in
         return controller

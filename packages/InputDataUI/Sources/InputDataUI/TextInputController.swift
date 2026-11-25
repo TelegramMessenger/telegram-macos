@@ -6,6 +6,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import Localization
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -58,6 +59,7 @@ public func TextInputController(context: any AccountContextProtocol, title: Stri
     }
     
     let controller = InputDataController(dataSignal: signal, title: title)
+    controller.analyticsScreen = .appTextInput
     
     controller.updateDatas = { data in
         updateState { current in

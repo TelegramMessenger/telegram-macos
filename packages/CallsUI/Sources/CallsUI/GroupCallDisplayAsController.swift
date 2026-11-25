@@ -13,6 +13,7 @@ import TelegramTheme
 import TelegramUtils
 import ColorPalette
 import TelegramIconsTheme
+import AppAnalytics
 
 
 
@@ -321,6 +322,7 @@ public func GroupCallDisplayAsController(context: any AccountContextProtocol, mo
     timer.start()
     
     let controller = InputDataController(dataSignal: signal, title: canBeScheduled ? strings().displayMeAsNewTitle : strings().displayMeAsTitle)
+    controller.analyticsScreen = .groupCallDisplayAs
     
     controller.onDeinit = {
         actionsDisposable.dispose()

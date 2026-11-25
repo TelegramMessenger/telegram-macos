@@ -1043,6 +1043,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
     private let mergePromise:Promise<TableUpdateTransition> = Promise()
     private let mergeDisposable:MetaDisposable = MetaDisposable()
     
+    private var unresortedList: [TableRowItem]?
+    private var unresortedListCarried: Bool = false
+
     public var resortController: TableResortController? {
         didSet {
             if oldValue != nil {
@@ -1127,6 +1130,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             super.layer?.backgroundColor = self.getBackgroundColor().cgColor
         }
         stickView?.updateColors()
+        for view in stackedStickViews.values {
+            view.updateColors()
+        }
         rightBorder?.backgroundColor = theme.colors.border
         //tableView.background = .clear
       //  super.layer?.backgroundColor = .clear
@@ -1165,6 +1171,14 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
 
     open override var isFlipped: Bool {
         return true
+    }
+
+    public var isAtBottom: Bool {
+        let offset = clipView.destination?.y ?? clipView.bounds.minY
+        if tableView.isFlipped {
+            return offset >= max(-contentInsets.top, documentSize.height - clipView.bounds.height) - 0.5
+        }
+        return offset <= 0.5
     }
     
     public override init(frame frameRect: NSRect) {
@@ -1345,7 +1359,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             rightBorder.frame = NSMakeRect(frame.width - .borderSize, 0, .borderSize, frame.height)
         }
         
-        if let stickView = stickView {
+        if stickClass != nil, secondaryStickClass != nil {
+            updateStickAfterScroll(false)
+        } else if let stickView = stickView {
             stickView.frame = NSMakeRect(stickView.frame.minX, stickView.frame.minY, frame.width, stickView.frame.height)
         }
     }
@@ -1361,9 +1377,13 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             let before = item.heightValue
             let updated = item.makeSize(frame.width, oldWidth: oldWidth)
             let after = item.heightValue
-            if (before != after && updated) || item.instantlyResize || inLiveResize {
-                reloadData(row: i, animated: false)
+            let needsHeightUpdate = (before != after && updated) || item.instantlyResize || inLiveResize
+            if needsHeightUpdate {
+                reloadData(row: i, animated: false, animateIfAlreadyAnimating: false)
                 noteHeightOfRow(i, false)
+            } else if oldWidth != frame.width, let view = item.view {
+                view.setFrameSize(NSSize(width: frame.width, height: after))
+                view.updateLayout(size: view.frame.size, transition: .immediate)
             }
         }
         endTableUpdates()
@@ -1592,6 +1612,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                 guard let self = self, self.superview != nil else {
                     return
                 }
+                if self.stickClass != nil, self.secondaryStickClass != nil {
+                    self.updateStickAfterScroll(false)
+                }
                 // Coalesce a burst of bounds changes (a trackpad fling fires these
                 // at up to 120 Hz) into a single `updateScroll` per runloop turn.
                 // `updateScroll` reads the clip view's live position at execution
@@ -1614,12 +1637,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
     
     
     // Primary stick item properties
-    private var stickClass:AnyClass? {
-        didSet {
-            self.stickClassName = self.stickClass.flatMap(NSStringFromClass)
-        }
-    }
-    private var stickClassName: String?
+    private var stickClass:AnyClass?
     private var stickView:TableStickView?
     
     private var stickItem:TableStickItem? {
@@ -1635,12 +1653,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
     private var firstTime: Bool = false
     
     // Secondary stick item properties
-    private var secondaryStickClass:AnyClass? {
-        didSet {
-            self.secondaryStickClassName = self.secondaryStickClass.flatMap(NSStringFromClass)
-        }
-    }
-    private var secondaryStickClassName: String?
+    private var secondaryStickClass:AnyClass?
     private var secondaryStickView:TableStickView?
     
     private var secondaryStickItem:TableStickItem? {
@@ -1654,6 +1667,16 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
     }
     private var secondaryStickHandler:((TableStickItem?)->Void)?
     private var secondaryFirstTime: Bool = false
+
+    private struct StackedStickKey: Hashable {
+        let primary: Bool
+        let id: AnyHashable
+    }
+
+    private var stackedStickViews: [StackedStickKey: TableStickView] = [:]
+    private var stackedStickPartners: [StackedStickKey: AnyHashable] = [:]
+    private var stackedStickOffset: NSPoint?
+    private var stackedStickFlashing = false
     
     // Primary stick item setup
     public func set(stickClass:AnyClass?, visible: Bool = true, handler:@escaping(TableStickItem?)->Void) {
@@ -1716,8 +1739,162 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
     }
     
     public func updateStickAfterScroll(_ animated: Bool) -> Void {
+        if let stickClass, let secondaryStickClass {
+            if !updating {
+                updateStackedSticks(primaryClass: stickClass, secondaryClass: secondaryStickClass)
+            }
+            return
+        }
+        if !stackedStickViews.isEmpty {
+            for view in stackedStickViews.values {
+                view.removeFromSuperview()
+            }
+            stackedStickViews.removeAll()
+            stackedStickPartners.removeAll()
+            enumerateExistingViews { view in
+                (view as? TableStickView)?.updateIsVisible(true, animated: false)
+            }
+        }
         updateSecondaryStickAfterScroll(animated: animated)
         updatePrimaryStickAfterScroll(animated: animated)
+    }
+
+    private func stackedStickLayouts(_ cls: AnyClass, primary: Bool) -> [(TableStickItem, TableStickyHeaderLayout)] {
+        let rows = stickRows(cls, primary: primary)
+        let orderedRows = tableView.isFlipped ? rows : Array(rows.reversed())
+        let documentFrame = convert(tableView.bounds, from: tableView)
+        var result: [(TableStickItem, TableStickyHeaderLayout)] = []
+        var lower = 0
+        var upper = orderedRows.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            let y = convert(tableView.rect(ofRow: orderedRows[middle]), from: tableView).minY
+            if y <= bounds.minY {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        for index in max(0, lower - 1) ..< orderedRows.count {
+            let row = orderedRows[index]
+            guard let item = list[row] as? TableStickItem else {
+                continue
+            }
+            let naturalY = convert(tableView.rect(ofRow: row), from: tableView).minY
+            if naturalY >= bounds.maxY {
+                break
+            }
+            let sectionEnd: CGFloat
+            if index + 1 < orderedRows.count {
+                sectionEnd = convert(tableView.rect(ofRow: orderedRows[index + 1]), from: tableView).minY
+            } else {
+                sectionEnd = documentFrame.maxY
+            }
+            if naturalY < bounds.maxY, sectionEnd > bounds.minY {
+                result.append((item, TableStickyHeaderLayout(id: item.stableId, naturalY: naturalY, sectionEnd: sectionEnd, height: item.heightValue, inset: stickTopInset)))
+            }
+        }
+        return result
+    }
+
+    private func updateStackedSticks(primaryClass: AnyClass, secondaryClass: AnyClass) {
+        stickView?.removeFromSuperview()
+        secondaryStickView?.removeFromSuperview()
+
+        let primary = stackedStickLayouts(primaryClass, primary: true)
+        var secondary = stackedStickLayouts(secondaryClass, primary: false)
+        let primaryLayouts = primary.map { $0.1 }
+        for index in secondary.indices {
+            secondary[index].1.end(beforeLeading: primaryLayouts)
+            secondary[index].1.yield(to: primaryLayouts)
+        }
+
+        stickItem = primary.first(where: { $0.1.naturalY <= stickTopInset && $0.1.sectionEnd > stickTopInset })?.0
+        secondaryStickItem = secondary.first(where: { $0.1.naturalY <= stickTopInset && $0.1.sectionEnd > stickTopInset })?.0
+
+        if let previous = stackedStickOffset, previous != liveDocumentOffset {
+            stackedStickFlashing = true
+        }
+        stackedStickOffset = liveDocumentOffset
+
+        var visibleKeys = Set<StackedStickKey>()
+        for (isPrimary, layouts) in [(false, secondary), (true, primary)] {
+            for (item, layout) in layouts where layout.y + layout.height > bounds.minY {
+                let key = StackedStickKey(primary: isPrimary, id: layout.id)
+                visibleKeys.insert(key)
+                let view: TableStickView
+                if let current = stackedStickViews[key] {
+                    view = current
+                } else {
+                    let viewClass = item.viewClass() as! TableStickView.Type
+                    view = viewClass.init(frame: NSRect(x: 0, y: layout.y, width: frame.width, height: layout.height))
+                    stackedStickViews[key] = view
+                }
+                let previousY = view.layer?.presentation()?.frame.minY ?? view.frame.minY
+                let previousPartner = stackedStickPartners[key]
+                let sizeChanged = view.frame.size != NSSize(width: frame.width, height: layout.height)
+                view.frame = NSRect(x: 0, y: layout.y, width: frame.width, height: layout.height)
+                let floating = abs(layout.y - layout.naturalY) > 0.5
+                if view.header != floating {
+                    view.header = floating
+                }
+                if let previousPartner, let partner = layout.offsetBy, previousPartner != partner {
+                    view.layer?.animatePosition(from: NSPoint(x: 0, y: previousY - layout.y), to: .zero, duration: 0.35, timingFunction: .spring, additive: true)
+                }
+                stackedStickPartners[key] = layout.offsetBy
+                if view.item !== item {
+                    view.set(item: item, animated: false)
+                    view.updateLayout(size: view.frame.size, transition: .immediate)
+                } else if sizeChanged {
+                    view.updateLayout(size: view.frame.size, transition: .immediate)
+                }
+                view.updateIsVisible(!isPrimary || stackedStickFlashing || layout.y - layout.naturalY < layout.height * 0.5, animated: false)
+                if view.superview == nil {
+                    let primaryView = isPrimary ? nil : subviews.first(where: { candidate in
+                        stackedStickViews.contains(where: { $0.key.primary && $0.value === candidate })
+                    })
+                    if let primaryView {
+                        addSubview(view, positioned: .below, relativeTo: primaryView)
+                    } else if let scroller = subviews.first(where: { $0 is NSScroller }) {
+                        addSubview(view, positioned: .below, relativeTo: scroller)
+                    } else {
+                        addSubview(view, positioned: .above, relativeTo: contentView)
+                    }
+                }
+            }
+        }
+
+        for key in Set(stackedStickViews.keys).subtracting(visibleKeys) {
+            stackedStickViews.removeValue(forKey: key)?.removeFromSuperview()
+            stackedStickPartners.removeValue(forKey: key)
+        }
+
+        enumerateExistingViews { view in
+            guard let view = view as? TableStickView, let item = view.item else {
+                return
+            }
+            let primary = item.isKind(of: primaryClass)
+            guard primary || item.isKind(of: secondaryClass) else {
+                return
+            }
+            view.updateIsVisible(false, animated: false)
+        }
+
+        if stackedStickFlashing {
+            scheduleStickTimeout { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.stackedStickFlashing = false
+                for (key, view) in self.stackedStickViews where key.primary {
+                    guard let item = view.item else {
+                        continue
+                    }
+                    let naturalY = self.convert(self.tableView.rect(ofRow: item.index), from: self.tableView).minY
+                    view.updateIsVisible(view.frame.minY - naturalY < view.frame.height * 0.5, animated: true)
+                }
+            }
+        }
     }
     
     private func updatePrimaryStickAfterScroll(animated: Bool) {
@@ -1737,7 +1914,6 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             
             let scrollInset = stickScrollInset
             let (item, index) = findStick(stickClass, primary: true, range: range, flipped: flipped)
-            let stickClassName = self.stickClassName ?? NSStringFromClass(stickClass)
             
             if let someItem = item as? TableStickItem {
                 var currentStick:TableStickItem? = adjacentStick(stickClass, primary: true, from: someItem.index, flipped: flipped)
@@ -1802,14 +1978,12 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                         if maybeAnimated {
                             maybeIndex = nil
                         } else {
-                            let secondaryViewClassName = secondaryStickView?.className
-                            maybeIndex = subviews.firstIndex(where: { $0.className == secondaryViewClassName })
+                            maybeIndex = secondaryStickView.flatMap { secondary in subviews.firstIndex(where: { object_getClass($0) == object_getClass(secondary) }) }
                         }
 
-                        let secondaryClassName = self.secondaryStickClassName
-                        let scrollerIndex = maybeIndex ?? subviews.firstIndex(where: { $0 is NSScroller || $0.className == secondaryClassName })
+                        let scrollerIndex = maybeIndex ?? subviews.firstIndex(where: { $0 is NSScroller })
                         
-                        let stickViewIndex = subviews.firstIndex(where: { $0.className == stickClassName })
+                        let stickViewIndex = subviews.firstIndex(where: { $0 === stickView })
                         if let scrollerIndex = scrollerIndex, stickViewIndex == nil || stickViewIndex! > scrollerIndex {
                             addSubview(stickView, positioned: .below, relativeTo: subviews[scrollerIndex])
                         }
@@ -1825,7 +1999,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                         var applied: Bool = false
                         for row in rows {
                             let row = min(max(0, row), list.count - 1)
-                            if let dateItem = self.item(at: row) as? TableStickItem, let view = dateItem.view as? TableStickView, dateItem.className == stickClassName {
+                            if let dateItem = self.item(at: row) as? TableStickItem, let view = dateItem.view as? TableStickView, dateItem.isMember(of: stickClass) {
                                 if documentOffset.y > (documentSize.height - frame.height) && !tableView.isFlipped {
                                     yTopOffset = -1
                                 }
@@ -1834,9 +2008,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                             }
                         }
                         if !applied {
-                            let stickViewClassName = stickView.className
+                            let stickViewClass: AnyClass? = object_getClass(stickView)
                             self.enumerateVisibleViews(with: { view in
-                                if stickViewClassName == view.className {
+                                if object_getClass(view) == stickViewClass {
                                     (view as? TableStickView)?.updateIsVisible(true, animated: false)
                                 }
                             })
@@ -1885,9 +2059,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                     stickView?.isHidden = true
                 }
                 
-                let stickViewClassName = stickView?.className
+                let stickViewClass: AnyClass? = stickView.flatMap { object_getClass($0) }
                 self.enumerateExistingViews(with: { view in
-                    if stickViewClassName == view.className {
+                    if stickViewClass != nil, object_getClass(view) == stickViewClass {
                         (view as? TableStickView)?.updateIsVisible(true, animated: false)
                     }
                 })
@@ -1904,7 +2078,6 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             
             let scrollInset = stickScrollInset
             let (item, index) = findStick(secondaryStickClass, primary: false, range: range, flipped: flipped)
-            let secondaryClassName = self.secondaryStickClassName ?? NSStringFromClass(secondaryStickClass)
             
             if let someItem = item as? TableStickItem {
                 var currentStick:TableStickItem? = adjacentStick(secondaryStickClass, primary: false, from: someItem.index, flipped: flipped)
@@ -1928,7 +2101,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                 
                 if let secondaryStickView = secondaryStickView {
                     let scrollerIndex = subviews.firstIndex(where: { $0 is NSScroller })
-                    let stickViewIndex = subviews.firstIndex(where: { $0.className == secondaryClassName })
+                    let stickViewIndex = subviews.firstIndex(where: { $0 === secondaryStickView })
                     if let scrollerIndex = scrollerIndex, stickViewIndex == nil || stickViewIndex! > scrollerIndex {
                         addSubview(secondaryStickView, positioned: .below, relativeTo: subviews[scrollerIndex])
                     }
@@ -1970,7 +2143,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                         var applied: Bool = false
                         for row in rows {
                             let row = min(max(0, row), list.count - 1)
-                            if let dateItem = self.item(at: row) as? TableStickItem, let view = dateItem.view as? TableStickView, dateItem.className == secondaryClassName {
+                            if let dateItem = self.item(at: row) as? TableStickItem, let view = dateItem.view as? TableStickView, dateItem.isMember(of: secondaryStickClass) {
                                 if documentOffset.y > (documentSize.height - frame.height) && !tableView.isFlipped {
                                     yTopOffset = -1
                                 }
@@ -1979,9 +2152,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                             }
                         }
                         if !applied {
-                            let secondaryViewClassName = secondaryStickView.className
+                            let secondaryViewClass: AnyClass? = object_getClass(secondaryStickView)
                             self.enumerateVisibleViews(with: { view in
-                                if secondaryViewClassName == view.className {
+                                if object_getClass(view) == secondaryViewClass {
                                     (view as? TableStickView)?.updateIsVisible(true, animated: false)
                                 }
                             })
@@ -2039,9 +2212,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                     secondaryStickView?.isHidden = true
                 }
                 
-                let secondaryViewClassName = secondaryStickView?.className
+                let secondaryViewClass: AnyClass? = secondaryStickView.flatMap { object_getClass($0) }
                 self.enumerateExistingViews(with: { view in
-                    if secondaryViewClassName == view.className {
+                    if secondaryViewClass != nil, object_getClass(view) == secondaryViewClass {
                         (view as? TableStickView)?.updateIsVisible(true, animated: false)
                     }
                 })
@@ -2399,6 +2572,10 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                 self.beginTableUpdates()
 
                 if isValidDrop {
+                    if start != current, self.unresortedList == nil || self.unresortedListCarried {
+                        self.unresortedList = self.list
+                        self.unresortedListCarried = false
+                    }
                     self.moveItem(from: start, to: current, redraw: false, animation: .none)
                     self.tableView.removeRows(at: IndexSet(integer: start), withAnimation: .none)
                     self.tableView.insertRows(at: IndexSet(integer: current), withAnimation: .none)
@@ -2436,6 +2613,109 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
 
     private func isResortRangeValid(_ controller: TableResortController) -> Bool {
         return controller.resortRange.location != NSNotFound && controller.resortRange.max <= self.list.count
+    }
+
+    private func listAfterMerge(_ items: [TableRowItem], deleted: [Int], inserted: [(Int, TableRowItem)], updated: [(Int, TableRowItem)]) -> [TableRowItem]? {
+        guard Set(updated.map { $0.0 }).count == updated.count else {
+            return nil
+        }
+        var items = items
+        for index in deleted.reversed() {
+            guard index >= 0 else {
+                return nil
+            }
+            if index < items.count {
+                items.remove(at: index)
+            }
+        }
+        for (index, item) in inserted {
+            guard index >= 0 else {
+                return nil
+            }
+            items.insert(item, at: min(index, items.count))
+        }
+        for (index, item) in updated {
+            guard index >= 0 else {
+                return nil
+            }
+            if index < items.count {
+                items[index] = item
+            }
+        }
+        return items
+    }
+
+    private func hasUniqueStableIds(_ items: [TableRowItem]) -> Bool {
+        return Set(items.map { $0.stableId }).count == items.count
+    }
+
+    private func hasSameRows(_ lhs: [TableRowItem], _ rhs: [TableRowItem]) -> Bool {
+        let lhsIds = Set(lhs.map { ObjectIdentifier($0) })
+        return lhs.count == rhs.count && lhsIds.count == lhs.count && lhsIds == Set(rhs.map { ObjectIdentifier($0) })
+    }
+
+    private func adjustedForResort(_ transition: TableUpdateTransition) -> (deleted: [Int], updated: [(Int, TableRowItem)], settlesResort: Bool) {
+        let unchanged = (transition.deleted, transition.updated, false)
+        guard let unresorted = self.unresortedList else {
+            return unchanged
+        }
+        self.unresortedList = nil
+        self.unresortedListCarried = false
+
+        guard hasSameRows(unresorted, self.list) else {
+            return unchanged
+        }
+        guard let expected = listAfterMerge(unresorted, deleted: transition.deleted, inserted: transition.inserted, updated: transition.updated), let current = listAfterMerge(self.list, deleted: transition.deleted, inserted: transition.inserted, updated: transition.updated) else {
+            return unchanged
+        }
+        if current.elementsEqual(expected, by: { $0 === $1 }) {
+            return (transition.deleted, transition.updated, true)
+        }
+        if hasUniqueStableIds(current) {
+            if hasSameRows(current, expected) {
+                self.unresortedList = expected
+                self.unresortedListCarried = true
+            }
+            return unchanged
+        }
+
+        var listIndices: [ObjectIdentifier: Int] = [:]
+        for (index, item) in self.list.enumerated() {
+            listIndices[ObjectIdentifier(item)] = index
+        }
+        var deleted: [Int] = []
+        for index in transition.deleted {
+            guard index >= 0, index < unresorted.count, let listIndex = listIndices[ObjectIdentifier(unresorted[index])] else {
+                return unchanged
+            }
+            deleted.append(listIndex)
+        }
+        deleted.sort()
+
+        guard let expectedBeforeUpdates = listAfterMerge(unresorted, deleted: transition.deleted, inserted: transition.inserted, updated: []), let currentBeforeUpdates = listAfterMerge(self.list, deleted: deleted, inserted: transition.inserted, updated: []) else {
+            return unchanged
+        }
+        var currentIndices: [ObjectIdentifier: Int] = [:]
+        for (index, item) in currentBeforeUpdates.enumerated() {
+            currentIndices[ObjectIdentifier(item)] = index
+        }
+        var updated: [(Int, TableRowItem)] = []
+        for (index, item) in transition.updated {
+            guard index >= 0, index < expectedBeforeUpdates.count, let currentIndex = currentIndices[ObjectIdentifier(expectedBeforeUpdates[index])] else {
+                return unchanged
+            }
+            updated.append((currentIndex, item))
+        }
+
+        guard let adjusted = listAfterMerge(self.list, deleted: deleted, inserted: transition.inserted, updated: updated), hasUniqueStableIds(adjusted), hasSameRows(adjusted, expected) else {
+            return unchanged
+        }
+        if adjusted.elementsEqual(expected, by: { $0 === $1 }) {
+            return (deleted, updated, true)
+        }
+        self.unresortedList = expected
+        self.unresortedListCarried = true
+        return (deleted, updated, false)
     }
 
     private var maxResortHeight: CGFloat {
@@ -2571,6 +2851,25 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
         return self.list.last
     }
     
+    public func noteHeightOfRowWithVerticalAnimation(_ row: Int) {
+        var previous: [(TableRowView, CGFloat)] = []
+        enumerateVisibleViews(with: { view in
+            previous.append((view, view.layer?.presentation()?.frame.minY ?? view.frame.minY))
+        })
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            noteHeightOfRow(row, false)
+            layoutSubtreeIfNeeded()
+        }
+        for (view, oldY) in previous where view.superview === tableView {
+            let delta = oldY - view.frame.minY
+            if abs(delta) > 0.25 {
+                view.layer?.animate(from: NSNumber(value: Double(delta)), to: NSNumber(value: 0), keyPath: "position.y", timingFunction: .easeOut, duration: duration, additive: true, forKey: "inputHeight.position.y")
+            }
+        }
+    }
+
     public func noteHeightOfRow(_ row:Int, _ animated:Bool = true) {
         guard row >= 0 && row < self.count else {
             return
@@ -2593,7 +2892,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
     
     
     
-    public func reloadData(row:Int, animated:Bool = false, options: NSTableView.AnimationOptions = .effectFade, presentAsNew: Bool = false) -> Void {
+    public func reloadData(row:Int, animated:Bool = false, options: NSTableView.AnimationOptions = .effectFade, presentAsNew: Bool = false, animateIfAlreadyAnimating: Bool = true) -> Void {
         if let view = self.viewNecessary(at: row) {
             let item = self.item(at: row)
             
@@ -2604,7 +2903,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
 
                 let rect = CGRect(origin: view.frame.origin, size: CGSize(width: width, height: height))
                 
-                let animated = (animated || view.layer?.animation(forKey: "position") != nil) && view.canAnimateUpdate(item)
+                let animated = (animated || (animateIfAlreadyAnimating && view.layer?.animation(forKey: "position") != nil)) && view.canAnimateUpdate(item)
 
                 
                 let transition: ContainedViewLayoutTransition = animated ? .animated(duration: duration, curve: .easeOut) : .immediate
@@ -3204,6 +3503,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
         }
         view.set(item: item, animated: false)
         view.updateLayout(size: NSMakeSize(item.width, item.height), transition: .immediate)
+        if let view = view as? TableStickView, let stickClass, let secondaryStickClass, item.isKind(of: stickClass) || item.isKind(of: secondaryStickClass) {
+            view.updateIsVisible(false, animated: false)
+        }
         self.afterSetupItem?(view, item)
 
         
@@ -3312,6 +3614,8 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
         assertOnMainThread()
         assert(!updating)
 
+        let (deleted, updated, settlesResort) = self.adjustedForResort(transition)
+
         var groupInOne = transition.groupInOne
         var groupedListHeight: CGFloat?
         if !groupInOne, mergesSaveVisibleInOneGroup, !appearAnimated, !transition.animated, case let .saveVisible(side, false) = transition.state {
@@ -3321,7 +3625,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             case .lower, .upper:
                 let rows = tableView.numberOfRows
                 let current = rows > 0 ? tableView.rect(ofRow: 0).union(tableView.rect(ofRow: rows - 1)).height : 0
-                let removed = transition.deleted.reduce(CGFloat(0)) { $0 + ($1 < list.count ? list[$1].heightValue : 0) }
+                let removed = deleted.reduce(CGFloat(0)) { $0 + ($1 < list.count ? list[$1].heightValue : 0) }
                 let added = transition.inserted.reduce(CGFloat(0)) { $0 + $1.1.heightValue }
                 let next = current - removed + added
                 let clipHeight = clipView.bounds.height
@@ -3368,9 +3672,11 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             self.tableView.beginUpdates()
         }
         
-        for rdx in transition.deleted.reversed() {
+        for rdx in deleted.reversed() {
             let effect:NSTableView.AnimationOptions
-            if case let .none(interface) = transition.state, interface != nil {
+            if settlesResort {
+                effect = .none
+            } else if case let .none(interface) = transition.state, interface != nil {
                 effect = (visibleRange.indexIn(rdx) || !transition.animateVisibleOnly) ? .effectFade : .none
             } else {
                 effect = transition.animated && (visibleRange.indexIn(rdx) || !transition.animateVisibleOnly) ? .effectFade : .none
@@ -3396,7 +3702,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
         
         for (idx, item) in transition.inserted {
             let effect:NSTableView.AnimationOptions
-            if case let .none(interface) = transition.state, interface != nil {
+            if settlesResort {
+                effect = .none
+            } else if case let .none(interface) = transition.state, interface != nil {
                 effect = .none
             } else {
                 effect = transition.animated && (visibleRange.indexIn(idx) || visibleRange.isNone || !transition.animateVisibleOnly) ? .effectFade : .none
@@ -3431,7 +3739,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             
             if let current = removed.first(where: { $0.0 == index })?.1 {
                 item = current
-            } else if let current = transition.updated.first(where: { $0.0 == index })?.1 {
+            } else if let current = updated.first(where: { $0.0 == index })?.1 {
                 item = current
             } else {
                 item = nil
@@ -3445,7 +3753,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             if case let .none(interface) = transition.state, interface != nil {
                 accept = false
             }
-            inserted.0.view?.onInsert(inserted.1, appearAnimated: appearAnimated && accept && !transition.deleted.contains(inserted.0.index))
+            inserted.0.view?.onInsert(inserted.1, appearAnimated: appearAnimated && accept && !settlesResort && !deleted.contains(inserted.0.index))
         }
         
                 
@@ -3556,13 +3864,16 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
 //        if case let .none(interface) = transition.state, interface != nil {
 //            animated = true
 //        }
-        for (index,item) in transition.updated {
+        for (index,item) in updated {
             var animated: Bool
             animated = (visibleRange.indexIn(index) || !transition.animateVisibleOnly)
             if case .saveVisible = state {
                 animated = transition.animated
             } else if case .none(nil) = state {
                 animated = transition.animated
+            }
+            if settlesResort {
+                animated = false
             }
             if let resizeAnchor = resizeAnchor, resizeAnchor.stableId == item.stableId {
                 if resizeAnchor.animated {
@@ -3753,7 +4064,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             }
             if animated {
                 if let view = viewNecessary(at: previous.index), view.isKind(of: item.viewClass()) {
-                    animated = view.canAnimateUpdate(item)
+                    animated = view.canAnimateUpdate(item) && !liveScrolling
                 } else {
                     animated = false
                 }
@@ -4341,7 +4652,13 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
        
         if newSize.width > 0 || newSize.height > 0 {
             if oldWidth != frame.width, newSize.width > 0 && newSize.height > 0 {
-                self.layoutIfNeeded(with: self.visibleRows(), oldWidth: oldWidth)
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    context.allowsImplicitAnimation = false
+                    self.tile()
+                    self.tableView.setFrameSize(NSSize(width: frame.width, height: self.tableView.frame.height))
+                    self.layoutIfNeeded(with: self.visibleRows(), oldWidth: oldWidth)
+                }
             } else if oldHeight != frame.height {
                 self.reloadHeightItems()
             }

@@ -68,6 +68,7 @@ open class ChatScheduleController<Context: AccountContextProtocol>: ChatControll
         chatInteraction.sendPlainText = { _ in
             
         }
+        chatInteraction.sendPlainTextWithAnalytics = nil
         let context = self.context
         
         chatInteraction.requestMessageActionCallback = { _, _, _ in

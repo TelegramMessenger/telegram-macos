@@ -30,6 +30,7 @@ import LokiRng
 import FoundationUtils
 import InputView
 import InputTextView
+import AppAnalytics
 
 
 private final class Arguments {
@@ -150,6 +151,7 @@ public func Star_AppExamples(context: (any AccountContextProtocol)) -> InputData
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().exampleAppsTitle)
+    controller.analyticsScreen = .starsAppExamples
     
     
     

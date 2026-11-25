@@ -147,6 +147,12 @@ final class LinkParsingTests: XCTestCase {
         assertPeer("tg://resolve?domain=alice&text=hello%20world", username: "alice", action: .inputText(text: "hello world", behavior: .automatic))
         assertPeer("tg://resolve?domain=alice&voicechat", username: "alice", action: .joinVoiceChat(nil))
         assertPeer("tg://resolve?domain=alice&voicechat=abc", username: "alice", action: .joinVoiceChat("abc"))
+        assertPeer("tg://resolve?domain=alice&videochat", username: "alice", action: .joinVoiceChat(nil))
+        assertPeer("tg://resolve?domain=alice&videochat=abc", username: "alice", action: .joinVoiceChat("abc"))
+        assertPeer("tg://resolve?domain=alice&livestream=abc", username: "alice", action: .joinVoiceChat("abc"))
+        assertPeer("https://t.me/alice?videochat", username: "alice", action: .joinVoiceChat(nil))
+        assertPeer("https://t.me/alice?videochat=abc", username: "alice", action: .joinVoiceChat("abc"))
+        assertPeer("https://t.me/alice?voicechat", username: "alice", action: .joinVoiceChat(nil))
         assertPeer("tg://resolve?domain=alice&startapp", username: "alice", action: .makeWebview(appname: "", command: nil))
         assertPeer("tg://resolve?domain=alice&attach=bot&choose=users+groups", username: "alice", action: .attachBot("bot", nil, ["bot"]))
         assertPeer("tg://resolve?domain=alice&direct", username: "alice", action: .direct)
@@ -164,6 +170,25 @@ final class LinkParsingTests: XCTestCase {
         assertPeer("https://t.me/alice/42?t=1h2m3s", username: "alice", post: 42, action: .openMedia(3723))
         assertPeer("https://t.me/c/123/42?t=90", username: "_private_123", post: 42, action: .openMedia(90))
         assertPeer("https://t.me/alice/42?t=90&option=AQ", username: "alice", post: 42, action: .pollOption(Data([1])))
+    }
+
+    func testOutOfRangeTimecodesAreIgnored() {
+        let outOfRange = [
+            "3000000000000000h",
+            "153722867280912931m",
+            "9223372036854775807s",
+            "2562047788015215h1000000m",
+            "99999999999999999999h",
+            "596524h",
+            "596523h14m8s",
+            "3000000000",
+        ]
+        for t in outOfRange {
+            assertPeer("https://t.me/x/1?t=\(t)", username: "x", post: 1)
+            assertPeer("https://t.me/c/123/42?t=\(t)", username: "_private_123", post: 42)
+        }
+        assertPeer("https://t.me/x/1?t=596523h14m7s", username: "x", post: 1, action: .openMedia(Int32.max))
+        assertPeer("https://t.me/x/1?t=596523h", username: "x", post: 1, action: .openMedia(2147482800))
     }
 
     func testTopicsCommentsAndStories() {

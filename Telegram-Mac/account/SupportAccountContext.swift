@@ -5,6 +5,7 @@ import SwiftSignalKit
 import TGUIKit
 import InAppSettings
 import AppKit
+import ComponentsUI
 
 final class SupportAccountContext {
     
@@ -18,11 +19,14 @@ final class SupportAccountContext {
         let context: AccountContext
         let parentContext: AccountContext
         let navigation: MajorNavigationController
+        let splitView: SplitView
+        weak var forumSidebarOwner: ViewController?
         var entertainment: EntertainmentViewController?
-        init(context: AccountContext, parentContext: AccountContext, navigation: MajorNavigationController, entertainment: EntertainmentViewController? = nil) {
+        init(context: AccountContext, parentContext: AccountContext, navigation: MajorNavigationController, splitView: SplitView, entertainment: EntertainmentViewController? = nil) {
             self.context = context
             self.parentContext = parentContext
             self.navigation = navigation
+            self.splitView = splitView
             self.entertainment = entertainment
         }
     }
@@ -55,6 +59,7 @@ final class SupportAccountContext {
     private let disposable: DisposableDict<AccountRecordId> = DisposableDict()
     private let chatDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
     private let chatReadyDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
+    private let chatThemeDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
 
     
     private var externalChats: [ExternalChat.Key : ExternalChat] = [:]
@@ -127,13 +132,24 @@ final class SupportAccountContext {
                 
         })
         
-        navigation.viewWillAppear(false)
-        window.contentView?.addSubview(navigation.view)
-        navigation.view.autoresizingMask = [.width, .height]
+        telegramUpdateTheme(theme, window: window, animated: false)
+        let windowControls = DetachedWindowControls.install(on: window)
+
+        let splitView = SplitView(frame: window.contentView?.bounds ?? window.bounds)
+        splitView.canChangeState = false
+        splitView.autoresizingMask = [.width, .height]
+        self.externalChats[.init(peerId: peerId, accountId: context.account.id)] = ExternalChat(context: context, parentContext: parent, navigation: navigation, splitView: splitView)
+        window.contentView?.addSubview(splitView)
+        splitView.addController(controller: navigation, proportion: SplitProportion(min: splitView.bounds.width, max: .greatestFiniteMagnitude))
+        splitView.needsLayout = true
+        windowControls.bringToFront()
+        splitView.layoutSubtreeIfNeeded()
+        self.chatThemeDisposable.set((themeSignal |> deliverOnMainQueue).start(next: { [weak windowControls] theme in
+            windowControls?.updateTheme(theme)
+        }), forKey: .init(peerId: peerId, accountId: accountId))
         self.chatReadyDisposable.set(chatController.ready.get().start(next: { [weak window] _ in
             window?.makeKeyAndOrderFront(self)
         }), forKey: .init(peerId: peerId, accountId: accountId))
-        navigation.viewDidAppear(false)
         
         window.closeInterceptor = { [weak self] in
             self?.close(peerId: peerId, accountId: accountId)
@@ -147,7 +163,6 @@ final class SupportAccountContext {
             return .invoked
         }, with: navigation, for: .L, priority: .supreme, modifierFlags: [.command])
 
-        self.externalChats[.init(peerId: peerId, accountId: context.account.id)] = ExternalChat(context: context, parentContext: parent, navigation: navigation, entertainment: nil)
         
         var toRemove:[ViewController] = []
         parent.bindings.rootNavigation().enumerateControllers({ controller, index in
@@ -162,11 +177,18 @@ final class SupportAccountContext {
             parent.bindings.rootNavigation().removeImmediately(remove)
         }
         
-        telegramUpdateTheme(theme, window: window, animated: false)
 
 
     }
     
+    func setForumSidebar(context: AccountContext, owner: ViewController, controller: ViewController?, open: Bool) {
+        guard let external = externalChats.values.first(where: { $0.context === context }),
+              external.navigation.controller === owner || external.forumSidebarOwner === owner else { return }
+        external.forumSidebarOwner = controller == nil ? nil : owner
+        let selected = external.navigation.controller === owner && open ? controller : nil
+        external.splitView.setTrailing(controller: selected, width: selected == nil ? 0 : EntertainmentSidebarController.paneWidth, minimumLeadingWidth: selected == nil ? 0 : 380, animated: true, overlayWhenNarrow: true, navigationOwner: owner)
+    }
+
     func open(account: Account) {
         let showTags = TelegramEngine(account: account).data.get(TelegramEngine.EngineData.Item.ChatList.FiltersDisplayTags())
 
@@ -242,6 +264,7 @@ final class SupportAccountContext {
         let key = ExternalChat.Key(peerId: peerId, accountId: accountId)
         self.chatDisposable.set(nil, forKey: key)
         self.chatReadyDisposable.set(nil, forKey: key)
+        self.chatThemeDisposable.set(nil, forKey: key)
         let external = self.externalChats.removeValue(forKey: key)
         if let external, let window = external.navigation.window {
             window.closeInterceptor = nil

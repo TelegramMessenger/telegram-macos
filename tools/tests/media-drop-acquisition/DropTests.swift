@@ -65,6 +65,23 @@ enum Namespaces { enum Peer { static let SecretChat = 1 } }
 enum Entry { case dropTarget }
 enum Mode: Equatable { case media, file }
 enum Via { case dragDrop }
+enum AnalyticsMediaJourney { enum Spec { enum LastBlocker: Equatable { case sizeLimit, fileUnavailable } } }
+final class Context {
+    var wrappedSignals = 0
+    func preservingPresentation<T>(_ signal: Signal<T>) -> Signal<T> { wrappedSignals += 1; return signal }
+}
+final class Journey {
+    var blockers: [AnalyticsMediaJourney.Spec.LastBlocker] = []
+    var count: Int?
+    var discarded = false
+    var prepared = false
+    let mode: Mode
+    init(mode: Mode) { self.mode = mode }
+    func blocked(_ reason: AnalyticsMediaJourney.Spec.LastBlocker) { blockers.append(reason) }
+    func selected(count: Int, mode: Mode) { self.count = count }
+    func preparing() { prepared = true }
+    func discard() { discarded = true }
+}
 struct EditState { let canEditMedia = true; var message = Message() }
 struct Message { var id = 1 }
 struct InterfaceState { var editState: EditState? }
@@ -84,31 +101,43 @@ enum Sender {
     }
 }
 final class ChatInteraction {
+    var context = Context()
     let interactionContext = AccountContext()
     let peerId = PeerId()
     var presentation = Presentation()
     var revision = 0
     var admitted = true
+    var journeys: [Journey] = []
     var previews: [[String]] = []
     var sends: [[String]] = []
+    var deliveredContext: Context?
+    var deliveredJourney: Journey?
     var replacements = 0
+    func captureAnalyticsContext() -> Context { context }
     func captureDeferredSendAction() -> ChatDeferredSendAction {
         let captured = revision
         return ChatDeferredSendAction { [weak self] in self?.revision == captured }
     }
-    func showPreviewSender(_ files: [URL], _ media: Bool, _ caption: String?) {
-        previews.append(files.map(\.path))
+    func makeMediaAnalyticsJourney(context: Context, entry: Entry, mode: Mode, via: Via, source: Int?) -> Journey? {
+        guard admitted, presentation.interfaceState.editState == nil else { return nil }
+        let result = Journey(mode: mode)
+        journeys.append(result)
+        return result
     }
-    func sendMedia(_ files: [MediaSenderContainer]) {
-        sends.append(files.map(\.path))
+    func showPreviewSender(_ files: [URL], _ media: Bool, _ caption: String?, analyticsContext: Context, journey: Journey?) {
+        previews.append(files.map(\.path)); deliveredContext = analyticsContext; deliveredJourney = journey
     }
-    func beginMediaReplacement() -> Int { 0 }
+    func sendMediaObserved(_ files: [MediaSenderContainer], journey: Journey?, analyticsContext: Context) {
+        sends.append(files.map(\.path)); deliveredContext = analyticsContext; deliveredJourney = journey
+    }
+    func beginMediaReplacement(entry: Entry, mode: Mode, context: Context) -> Int { 0 }
     func applyMediaReplacement(_ media: Int, request: Int) { replacements += 1 }
 }
 final class ChatController {
-    let context = AccountContext()
     var window: Window? = Window()
     let chatInteraction = ChatInteraction()
+    let context = AccountContext()
+    let analyticsScreen: Int? = 1
     var editingSessionId = 0
     let editCurrentMessagePhotoDisposable = Disposable()
     let updateMediaDisposable = Disposable()
@@ -127,6 +156,7 @@ final class DropTests: XCTestCase {
         let controller = ChatController()
         let accepted = controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg", "/large.jpg"]))
         XCTAssertEqual(accepted.count, 2)
+        XCTAssertTrue(controller.chatInteraction.journeys.isEmpty)
         XCTAssertTrue(controller.draggingItems(for: NSPasteboard(files: ["/large.jpg", "/missing"])).isEmpty)
         XCTAssertEqual(NSApp.activations, 0)
     }
@@ -136,13 +166,16 @@ final class DropTests: XCTestCase {
             controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg", "/large.jpg"]))[index].handler()
             let chat = controller.chatInteraction
             XCTAssertEqual(chat.previews, [["/photo.jpg"]])
+            XCTAssertEqual(chat.journeys.count, 1)
+            XCTAssertEqual(chat.deliveredJourney?.blockers, [.sizeLimit])
+            XCTAssertEqual(chat.deliveredJourney?.mode, index == 0 ? .file : .media)
         }
     }
-    func testUnavailableAndOversizedFilesAreFiltered() {
+    func testUnavailableMetadataAndMixedRejectionPriority() {
         for rejected in [["/missing"], ["/large.jpg", "/missing"], ["/missing", "/large.jpg"]] {
             let controller = ChatController()
             controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg"] + rejected))[0].handler()
-            XCTAssertEqual(controller.chatInteraction.previews, [["/photo.jpg"]])
+            XCTAssertEqual(controller.chatInteraction.deliveredJourney?.blockers, rejected.count == 1 ? [.fileUnavailable] : [.sizeLimit])
         }
     }
     func testShiftDropKeepsBlockerAndAcceptedCountWithoutPreview() {
@@ -152,12 +185,15 @@ final class DropTests: XCTestCase {
         let chat = controller.chatInteraction
         XCTAssertEqual(chat.sends, [["/photo.jpg"]])
         XCTAssertTrue(chat.previews.isEmpty)
+        XCTAssertEqual(chat.deliveredJourney?.blockers, [.sizeLimit])
+        XCTAssertEqual(chat.deliveredJourney?.count, 1)
     }
     func testOneDropCanConsumeOnlyOneTargetOnce() {
         let controller = ChatController()
         let targets = controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg"]))
         targets[0].handler(); targets[0].handler(); targets[1].handler()
         XCTAssertEqual(controller.chatInteraction.previews.count, 1)
+        XCTAssertEqual(controller.chatInteraction.journeys.count, 1)
         XCTAssertEqual(NSApp.activations, 1)
     }
     func testChangedComposerRejectsEveryOldTargetBeforeStartingTask() {
@@ -166,6 +202,7 @@ final class DropTests: XCTestCase {
             let targets = controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg"], image: image))
             controller.chatInteraction.revision += 1
             for item in targets { item.handler() }
+            XCTAssertTrue(controller.chatInteraction.journeys.isEmpty)
             XCTAssertTrue(controller.chatInteraction.previews.isEmpty)
             XCTAssertTrue(pendingImages.isEmpty)
         }
@@ -174,13 +211,18 @@ final class DropTests: XCTestCase {
     func testImagePreparationRetainsOriginalContextAndConsumesResultOnce() {
         for index in 0...1 {
             let controller = ChatController()
+            let origin = controller.chatInteraction.context
             let targets = controller.draggingItems(for: NSPasteboard(image: true))
             targets[index].handler()
+            XCTAssertEqual(origin.wrappedSignals, 1)
             XCTAssertTrue(controller.chatInteraction.previews.isEmpty)
-
+            controller.chatInteraction.context = Context()
             pendingImages.last?("/prepared.jpg")
             pendingImages.last?("/duplicate.jpg")
             XCTAssertEqual(controller.chatInteraction.previews, [["/prepared.jpg"]])
+            XCTAssertTrue(controller.chatInteraction.deliveredContext === origin)
+            XCTAssertEqual(controller.chatInteraction.deliveredJourney?.prepared, true)
+            XCTAssertEqual(controller.chatInteraction.deliveredJourney?.discarded, false)
         }
     }
     func testChangedComposerDuringImagePreparationDiscardsTask() {
@@ -190,15 +232,18 @@ final class DropTests: XCTestCase {
             controller.chatInteraction.revision += 1
             pendingImages.last?("/stale.jpg")
             XCTAssertTrue(controller.chatInteraction.previews.isEmpty)
+            XCTAssertEqual(controller.chatInteraction.journeys.first?.discarded, true)
         }
     }
     func testControllerDestructionDuringPreparationDiscardsJourney() {
         var controller: ChatController? = ChatController()
         controller?.draggingItems(for: NSPasteboard(image: true))[0].handler()
+        let task = controller?.chatInteraction.journeys.first
         weak var weakController = controller
         controller = nil
         XCTAssertNil(weakController)
         pendingImages.last?("/orphan.jpg")
+        XCTAssertEqual(task?.discarded, true)
     }
     func testEditingDropIsOneUseAndDoesNotStartComposeTask() {
         for image in [false, true] {
@@ -208,6 +253,7 @@ final class DropTests: XCTestCase {
             item.handler(); item.handler()
             if image { pendingImages.last?("/prepared.jpg") }
             XCTAssertEqual(controller.chatInteraction.replacements, 1)
+            XCTAssertTrue(controller.chatInteraction.journeys.isEmpty)
         }
     }
     func testChangedEditSessionRejectsOldTarget() {
@@ -226,6 +272,7 @@ final class DropTests: XCTestCase {
             controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg", "/large.jpg"]))[0].handler()
             XCTAssertEqual(controller.chatInteraction.previews.count, shift ? 0 : 1)
             XCTAssertEqual(controller.chatInteraction.sends.count, shift ? 1 : 0)
+            XCTAssertTrue(controller.chatInteraction.journeys.isEmpty)
             let old = controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg"]))
             controller.chatInteraction.revision += 1
             old[0].handler()
@@ -240,5 +287,6 @@ final class DropTests: XCTestCase {
         controller.chatInteraction.presentation.state = .block
         XCTAssertTrue(controller.draggingItems(for: NSPasteboard(files: ["/photo.jpg"])).isEmpty)
         XCTAssertTrue(controller.draggingItems(for: NSPasteboard(image: true)).isEmpty)
+        XCTAssertTrue(controller.chatInteraction.journeys.isEmpty)
     }
 }

@@ -9,12 +9,95 @@ import InputTextView
 import MessageTextUtils
 import TelegramTheme
 import TelegramUtils
+import Localization
+import HTMLBubbles
+import MessageUtils
+func showCopyRestriction(_ message: Message, chatInteraction: ChatInteraction) -> Bool {
+    guard message.isCopyProtected(cachedData: chatInteraction.presentation.cachedData) else {
+        return false
+    }
+    showProtectedCopyAlert(message, for: chatInteraction.interactionContext.window)
+    return true
+}
+
+func restrictCopying(_ interactions: TextViewInteractions, message: Message, layout: TextViewLayout, chatInteraction: ChatInteraction) {
+    restrictCopying(interactions, message: message, chatInteraction: chatInteraction, isBlocked: { [weak layout] in
+        return layout?.mayItems == false
+    })
+}
+
+func restrictCopying(_ interactions: TextViewInteractions, message: Message, layout: FoldingTextLayout, chatInteraction: ChatInteraction) {
+    restrictCopying(interactions, message: message, chatInteraction: chatInteraction, isBlocked: { [weak layout] in
+        return layout?.blocks.contains(where: { !$0.text.mayItems }) == true
+    })
+}
+
+private func restrictCopying(_ interactions: TextViewInteractions, message: Message, chatInteraction: ChatInteraction, isBlocked: @escaping () -> Bool) {
+    let copy = interactions.copy
+    interactions.copy = { [weak chatInteraction] in
+        guard isBlocked() else {
+            return copy?() ?? false
+        }
+        if let chatInteraction {
+            _ = showCopyRestriction(message, chatInteraction: chatInteraction)
+        }
+        return true
+    }
+    let processURL = interactions.processURL
+    let makeLinkType = interactions.makeLinkType
+    interactions.processURL = { [weak chatInteraction] link in
+        if case .code = makeLinkType((link, "")), isBlocked() {
+            if let chatInteraction {
+                _ = showCopyRestriction(message, chatInteraction: chatInteraction)
+            }
+            return
+        }
+        processURL(link)
+    }
+}
+
 public struct SelectContainer {
     public let text:NSAttributedString
     public let range:NSRange
     public let index: Int
     public let header:String?
     public var richText: [RichText]? = nil
+}
+
+func copiedMessageHeader(_ message: Message, timeDifference: TimeInterval) -> String {
+    var header: String
+    if let forwardInfo = message.forwardInfo {
+        header = forwardInfo.authorTitle
+    } else {
+        header = message.effectiveAuthor?.displayTitle ?? ""
+    }
+    if message.timestamp != scheduleWhenOnlineTimestamp {
+        let date = Date(timeIntervalSince1970: TimeInterval(message.timestamp) - timeDifference)
+        header += ", [" + DateSelectorUtil.chatFullDateFormatter.string(from: date) + "]"
+    }
+    return header
+}
+
+func copiedMessageReplyLine(_ message: Message, threadId: Int64?) -> String? {
+    guard let attribute = message.replyAttribute, let replied = message.associatedMessages[attribute.messageId] else {
+        return nil
+    }
+    if ChatRowItem.hidesReply(to: attribute, in: message, threadId: threadId) {
+        return nil
+    }
+    let quote = attribute.isQuote ? attribute.quote : nil
+    var author = replied.effectiveAuthor?.displayTitle ?? ""
+    if let forwardInfo = replied.forwardInfo, quote == nil {
+        author = forwardInfo.authorTitle
+    }
+    let title = quote != nil ? strings().chatReplyQuotePanelTitle(author) : strings().chatReplyMessagePanelTitle(author)
+    if replied.isCopyProtected(cachedData: nil) {
+        return title
+    }
+    let source = quote.map { messageReplyQuoteText($0).text } ?? (pullText(from: replied).string as String)
+    let firstLine = source.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+    let snippet = firstLine.count > 100 ? String(firstLine.prefix(100)) + "…" : firstLine
+    return snippet.isEmpty ? title : title + ": " + snippet
 }
 
 public class SelectManager : NSResponder {
@@ -308,23 +391,27 @@ public class SelectManager : NSResponder {
         } else if let chatInteraction = self.chatInteraction {
             if let selectionState = chatInteraction.presentation.selectionState {
                 let timeDifference = chatInteraction.interactionContext.timeDifference
-                _ = chatInteraction.interactionContext.account.postbox.messagesAtIds(Array(selectionState.selectedIds.sorted(by: <))).start(next: { messages in
+                let threadId = chatInteraction.chatLocation.threadId
+                let cachedData = chatInteraction.presentation.cachedData
+                let window = chatInteraction.interactionContext.window
+                _ = (chatInteraction.interactionContext.account.postbox.messagesAtIds(Array(selectionState.selectedIds.sorted(by: <))) |> deliverOnMainQueue).start(next: { messages in
+                    if let blocked = messages.first(where: { $0.isCopyProtected(cachedData: cachedData) }) {
+                        showProtectedCopyAlert(blocked, for: window)
+                    }
+                    let messages = messages.filter { !$0.isCopyProtected(cachedData: cachedData) }
+                    guard !messages.isEmpty else {
+                        return
+                    }
                     var text: String = ""
                     for message in messages {
                         if !text.isEmpty {
                             text += "\n\n"
                         }
-                        if let forwardInfo = message.forwardInfo {
-                            text += "> " + forwardInfo.authorTitle
-                        } else {
-                            text += "> " + (message.effectiveAuthor?.displayTitle ?? "")
-                        }
-                        if message.timestamp != scheduleWhenOnlineTimestamp {
-                            let date = Date(timeIntervalSince1970: TimeInterval(message.timestamp) - timeDifference)
-                            text += ", [" + DateSelectorUtil.chatFullDateFormatter.string(from: date) + "]"
-                        }
-                        text += ":"
+                        text += "> " + copiedMessageHeader(message, timeDifference: timeDifference) + ":"
                         text += "\n"
+                        if let replyLine = copiedMessageReplyLine(message, threadId: threadId) {
+                            text += "> " + replyLine + "\n"
+                        }
                         text += pullText(from: message).string as String
                     }
                     copyToClipboard(text)
@@ -456,6 +543,12 @@ public protocol MultipleSelectable {
     var header: String? { get }
 }
 
+func chatTextSelectionDidDrag(from start: NSPoint, to location: NSPoint) -> Bool {
+    let dx = location.x - start.x
+    let dy = location.y - start.y
+    return dx * dx + dy * dy > 4 * 4
+}
+
 public class ChatSelectText : NSObject {
 
     private var beginInnerLocation:NSPoint = NSMakePoint(-1, -1)
@@ -470,7 +563,6 @@ public class ChatSelectText : NSObject {
     private var locationInWindow: NSPoint? = nil
     private var reversible: Bool = false
     private var isDragConfirmed: Bool = false
-    private let dragThreshold: CGFloat = 4
 
     private func confirmDragIfNeeded(_ location: NSPoint) -> Bool {
         if isDragConfirmed {
@@ -479,9 +571,7 @@ public class ChatSelectText : NSObject {
         guard let start = locationInWindow else {
             return false
         }
-        let dx = location.x - start.x
-        let dy = location.y - start.y
-        if dx * dx + dy * dy > dragThreshold * dragThreshold {
+        if chatTextSelectionDidDrag(from: start, to: location) {
             isDragConfirmed = true
         }
         return isDragConfirmed
@@ -629,7 +719,8 @@ public class ChatSelectText : NSObject {
                 if let index = self?.table.row(at: point), index > 0, let item = self?.table.item(at: index), let view = item.view as? ChatRowView {
                     
                     if event.clickCount > 1, selectManager.isEmpty {
-                        if !view.isAllowedToDoubleAction(view.convert(event.locationInWindow, from: nil)) {
+                        if !view.isAllowedToDoubleAction(view.convert(event.locationInWindow, from: nil)),
+                           (window.firstResponder as? HTMLBubbleView)?.selectedText == nil {
                             view.textSelectionSources.restoreFocus(in: window)
                         }
                     }

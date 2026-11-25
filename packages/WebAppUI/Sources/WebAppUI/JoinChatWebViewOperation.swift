@@ -1,3 +1,4 @@
+import AppAnalytics
 import AlertsUI
 import Foundation
 import Localization
@@ -15,6 +16,7 @@ final class JoinChatWebViewOperation {
     private let botId: PeerId
     private let queryId: Int64
     private var peerId: PeerId?
+    private var origin: AnalyticsContext
     private weak var owner: BrowserStateContext?
     private let finished: (JoinChatWebViewOperation) -> Void
     private let decisions = MetaDisposable()
@@ -28,13 +30,15 @@ final class JoinChatWebViewOperation {
     private var waitingForOpen = false
     private var ended = false
 
-    init(context: any AccountContextProtocol, owner: BrowserStateContext, botId: PeerId, url: String?, queryId: Int64, peerId: PeerId?, finished: @escaping (JoinChatWebViewOperation) -> Void) {
+    init(context: any AccountContextProtocol, owner: BrowserStateContext, botId: PeerId, url: String?, queryId: Int64, peerId: PeerId?, analyticsContext: AnalyticsContext?, finished: @escaping (JoinChatWebViewOperation) -> Void) {
         self.context = context
         self.owner = owner
         self.botId = botId
         self.queryId = queryId
         self.peerId = peerId
         self.uniqueId = .webapp(queryId)
+        let inherited = peerId == nil ? Analytics.shared.unresolvedContext() : analyticsContext ?? Analytics.shared.unresolvedContext()
+        self.origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId ?? botId, inherited: inherited).restricting(peerId: botId)
         self.finished = finished
         if let url {
             self.initialResult = RequestWebViewResult(flags: [], queryId: queryId, url: url, keepAliveSignal: nil)
@@ -42,6 +46,8 @@ final class JoinChatWebViewOperation {
     }
 
     func start() {
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         decisions.set((context.account.stateManager.joinChatWebViewDecisions |> deliverOnMainQueue).start(next: { [weak self] values in
             self?.receive(values)
         }, completed: { [weak self] in
@@ -50,7 +56,7 @@ final class JoinChatWebViewOperation {
         guard !ended else { return }
         var receivedPeer = false
         let peerSignal = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: botId)) |> take(1) |> deliverOnMainQueue
-        lookup.set((peerSignal).start(next: { [weak self] peer in
+        lookup.set(origin.preservingPresentation(peerSignal).start(next: { [weak self] peer in
             guard let self, !self.ended else { return }
             receivedPeer = true
             guard let peer, peer.id == self.botId else {
@@ -65,7 +71,7 @@ final class JoinChatWebViewOperation {
         guard !ended, initialResult == nil else { return }
         var receivedUrl = false
         let signal = context.engine.messages.requestChatJoinWebView(queryId: queryId, themeParams: generateWebAppThemeParams(theme)) |> take(1) |> deliverOnMainQueue
-        urlRequest.set((signal).start(next: { [weak self] result in
+        urlRequest.set(origin.preservingPresentation(signal).start(next: { [weak self] result in
             guard let self, !self.ended else { return }
             receivedUrl = true
             self.initialResult = result
@@ -79,9 +85,12 @@ final class JoinChatWebViewOperation {
 
     private func receive(_ values: [JoinChatWebViewDecision]) {
         guard !ended else { return }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         for decision in values {
             guard decision.queryId == queryId, peerId == nil || peerId == decision.peerId else { continue }
             peerId = decision.peerId
+            origin = origin.restricting(peerId: decision.peerId)
             switch decision.result {
             case let .webView(url):
                 latestUrl = url
@@ -97,6 +106,8 @@ final class JoinChatWebViewOperation {
         guard !ended, !waitingForOpen, let owner, let bot, let initialResult else { return }
         let url = latestUrl ?? initialResult.url
         guard openedUrl != url else { return }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let result = RequestWebViewResult(flags: initialResult.flags, queryId: initialResult.queryId ?? queryId, url: url, keepAliveSignal: initialResult.keepAliveSignal)
         let tab: BrowserTabData.Data = .straight(bot: bot, peerId: peerId ?? botId, title: bot._asPeer().displayTitle, result: result)
         if openedUrl != nil { owner.closeJoinChatTab(uniqueId: uniqueId) }
@@ -104,7 +115,7 @@ final class JoinChatWebViewOperation {
         waitingForOpen = true
         let request = MetaDisposable()
         pendingOpen.set(request)
-        request.set(owner.openCancellable(tab: tab, uniqueId: uniqueId, completion: { [weak self] opened in
+        request.set(owner.openCancellable(tab: tab, uniqueId: uniqueId, analyticsContext: origin, completion: { [weak self] opened in
             guard let self, !self.ended else { return }
             self.waitingForOpen = false
             guard opened else {
@@ -123,6 +134,8 @@ final class JoinChatWebViewOperation {
     private func finish(result: JoinChatWebViewResult? = nil, error: Bool = false, closeTab: Bool = true) {
         guard !ended else { return }
         ended = true
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         decisions.dispose()
         lookup.dispose()
         urlRequest.dispose()
@@ -134,7 +147,7 @@ final class JoinChatWebViewOperation {
         } else if let result {
             switch result {
             case .approved:
-                _ = (showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
+                _ = origin.preservingPresentation(showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
             case .declined:
                 alert(for: context.window, info: strings().unknownError)
             case .queued:

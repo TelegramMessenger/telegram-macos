@@ -9,7 +9,7 @@ public struct SlowMode : Equatable {
     public let sendingIds: [MessageId]
     public init(validUntil: Int32? = nil, timeout: Int32? = nil, sendingIds: [MessageId] = []) {
         self.validUntil = validUntil
-        self.timeout = timeout
+        self.timeout = timeout.flatMap { $0 > 0 ? $0 : nil }
         self.sendingIds = sendingIds
     }
     public func withUpdatedValidUntil(_ validUntil: Int32?) -> SlowMode {

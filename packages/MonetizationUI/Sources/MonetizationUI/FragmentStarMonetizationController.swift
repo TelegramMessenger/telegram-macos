@@ -23,6 +23,7 @@ import InputTextView
 import StatisticsUI
 import StarsUI
 import InlineStickerLayer
+import AppAnalytics
 
 
 private func transactionSegments(_ list: [State.TransactionMode], transactionMode: State.TransactionMode) -> [ScrollableSegmentItem] {
@@ -562,6 +563,7 @@ public func FragmentStarMonetizationController(context: any AccountContextProtoc
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().fragmentStarsTitle, hasDone: false)
+    controller.analyticsScreen = .peerInfoStarsBalance
     getController = { [weak controller] in controller }
     
     controller.contextObject = contextObject
@@ -614,7 +616,7 @@ private final class WithdrawInputView : GeneralRowView {
         required init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             addSubview(textView)
-            layer?.cornerRadius = 10
+            layer?.cornerRadius = 20
             scaleOnClick = true
             self.set(background: theme.colors.accent, for: .Normal)
             
@@ -1056,6 +1058,7 @@ private func withdraw(context: any AccountContextProtocol, state: State, stateVa
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .peerInfoStarsBalanceWithdraw
     
     controller.validateData = { _ in
         

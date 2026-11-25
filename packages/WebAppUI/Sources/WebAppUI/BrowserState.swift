@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import Foundation
 import WebKit
 import TGUIKit
@@ -150,6 +151,15 @@ public final class BrowserStateContext {
         }
     }
     
+    public static func focusedWindow(for context: any AccountContextProtocol) -> Window? {
+        let holder = accountHolder.with { $0[context.account.id] }
+        guard let holder, holder.context === context, let window = holder.browser?.window,
+              window.isKeyWindow, window.isVisible else {
+            return nil
+        }
+        return window
+    }
+
     public static func cleanup(_ accountId: AccountRecordId) {
         let holder = accountHolder.with { $0[accountId] }
         holder?.hide(close: true)
@@ -400,10 +410,10 @@ public final class BrowserStateContext {
         }
     }
     
-    func openJoinChatWebView(botId: PeerId, url: String?, queryId: Int64, peerId: PeerId?) {
+    func openJoinChatWebView(botId: PeerId, url: String?, queryId: Int64, peerId: PeerId?, analyticsContext: AnalyticsContext?) {
         let uniqueId: BrowserTabData.Unique = .webapp(queryId)
         joinChatOperations.removeValue(forKey: uniqueId)?.cancel(closeTab: true)
-        let operation = JoinChatWebViewOperation(context: context, owner: self, botId: botId, url: url, queryId: queryId, peerId: peerId, finished: { [weak self] operation in
+        let operation = JoinChatWebViewOperation(context: context, owner: self, botId: botId, url: url, queryId: queryId, peerId: peerId, analyticsContext: analyticsContext, finished: { [weak self] operation in
             guard self?.joinChatOperations[uniqueId] === operation else { return }
             self?.joinChatOperations.removeValue(forKey: uniqueId)
         })
@@ -425,12 +435,15 @@ public final class BrowserStateContext {
         browser?.removeTab(uniqueId)
     }
 
-
     public func open(tab: BrowserTabData.Data, uniqueId: BrowserTabData.Unique? = nil) {
-        _ = openCancellable(tab: tab, uniqueId: uniqueId)
+        open(tab: tab, uniqueId: uniqueId, analyticsContext: nil)
     }
 
-    func openCancellable(tab: BrowserTabData.Data, uniqueId: BrowserTabData.Unique? = nil, completion: ((Bool) -> Void)? = nil) -> Disposable {
+    public func open(tab: BrowserTabData.Data, uniqueId: BrowserTabData.Unique? = nil, analyticsContext: AnalyticsContext?) {
+        _ = openCancellable(tab: tab, uniqueId: uniqueId, analyticsContext: analyticsContext)
+    }
+
+    func openCancellable(tab: BrowserTabData.Data, uniqueId: BrowserTabData.Unique? = nil, analyticsContext: AnalyticsContext?, completion: ((Bool) -> Void)? = nil) -> Disposable {
         let cancelled = Atomic(value: false)
         let policyDisposable = MetaDisposable()
         var presented = false
@@ -441,16 +454,17 @@ public final class BrowserStateContext {
             completion?(opened)
         }
         let context = self.context
-        let request = BrowserDecision()
+        let origin = BrowserAnalyticsOrigin(account: context, data: tab, inherited: analyticsContext)
+        let request = BrowserDecision(origin: origin)
         let invoke: (Bool) -> Void = { [weak self] confirmed in
             request.resolve {
                 guard !cancelled.with({ $0 }), let self else { complete(false); return }
                 if confirmed, let peer = tab.peer { FastSettings.markWebAppAsConfirmed(peer.id) }
                 if let browser = self.browser, !browser.markAsDeinit {
-                    browser.add(tab, uniqueId: uniqueId)
+                    browser.add(tab, uniqueId: uniqueId, analyticsContext: origin.context)
                     browser.makeKeyAndOrderFront()
                 } else {
-                    let controller = WebappBrowserController(context: context, initialTab: tab, initialUniqueId: uniqueId)
+                    let controller = WebappBrowserController(context: context, initialTab: tab, initialUniqueId: uniqueId, analyticsContext: origin.context)
                     self.show(controller)
                 }
                 complete(true)
@@ -459,7 +473,7 @@ public final class BrowserStateContext {
         let verifyAgeBot = context.appConfiguration.getStringValue("verify_age_bot_username", orElse: "")
         if let peer = tab.peer, FastSettings.shouldConfirmWebApp(peer.id), peer.addressName != verifyAgeBot {
             let signal = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.BotPrivacyPolicyUrl(id: peer.id)) |> take(1) |> deliverOnMainQueue
-            policyDisposable.set((signal).start(next: { [weak self] privacyUrl in
+            policyDisposable.set(origin.preserving(signal).start(next: { [weak self] privacyUrl in
                 guard !cancelled.with({ $0 }), let self else { return }
                 let window = self.browser?.markAsDeinit == false ? self.browser?.window : context.window
                 guard let window else { return }
@@ -467,7 +481,7 @@ public final class BrowserStateContext {
                     return AlertHeaderItem(initialSize, stableId: stableId, presentation: presentation, context: context, peer: peer, info: strings().botMoreAbout, callback: { _ in
                         guard !cancelled.with({ $0 }) else { return }
                         request.resolve {
-                            BrowserHooks.shared.openChatObserved(context, peer.id)
+                            BrowserHooks.shared.openChatObserved(context, peer.id, analyticsContext: origin.context)
                             closeAllModals(window: window)
                             complete(false)
                         }

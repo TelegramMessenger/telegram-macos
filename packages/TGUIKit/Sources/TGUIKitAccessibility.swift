@@ -33,6 +33,7 @@ public struct AccessibilityIssue: Equatable, CustomStringConvertible {
 public enum AccessibilityAudit {
     private static let interactiveRoles: Set<NSAccessibility.Role> = [
         .button, .checkBox, .radioButton, .popUpButton, .menuButton, .link, .slider, .incrementor, .disclosureTriangle,
+        .textField, .textArea, .comboBox,
     ]
     private static let minimumImageSide: CGFloat = 12
 
@@ -49,6 +50,13 @@ public enum AccessibilityAudit {
         walkAccessibility(root, path: name(of: root), issues: &issues, visited: &visited, depth: 0)
         walkViews(root, path: name(of: root), representedByAncestor: false, issues: &issues)
         return issues
+    }
+
+    public static func elements(_ window: NSWindow) -> [NSAccessibilityProtocol] {
+        guard let contentView = window.contentView else {
+            return []
+        }
+        return elements(contentView)
     }
 
     public static func elements(_ root: NSView) -> [NSAccessibilityProtocol] {

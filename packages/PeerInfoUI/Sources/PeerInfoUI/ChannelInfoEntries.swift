@@ -25,6 +25,7 @@ import TelegramMediaUtils
 import TelegramTheme
 import TelegramUtils
 import InlineStickerLayer
+import AppAnalytics
 
 struct ChannelInfoEditingState: Equatable {
     let editingName: String?
@@ -240,6 +241,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func visibilitySetup() {
+        manageStep?(.changeType)
         let setup = PeerInfoNavigationHooks.shared.makeChannelVisibilityController(context, peerId, true, nil)
         visibilitySetupDisposable.set((setup.onComplete |> deliverOnMainQueue).start(next: { [weak self] _ in
             self?.pullNavigation()?.back()
@@ -247,6 +249,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
         pushViewController(setup.controller)
     }
     func openInviteLinks() {
+        manageStep?(.openInviteLinks)
         pushViewController(InviteLinksController(context: context, peerId: peerId, isChannel: true, manager: linksManager))
     }
     func openPostSuggestions() {
@@ -284,16 +287,19 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
         }))
     }
     func openReactions(allowedReactions: PeerAllowedReactions?, availableReactions: AvailableReactions?, reactionsCount: Int32?, starsAllowed: Bool?) {
+        manageStep?(.openReactions)
         if let availableReactions = availableReactions {
             PeerInfoNavigationHooks.shared.showChannelReactions(context, peerId, allowedReactions, availableReactions, reactionsCount, starsAllowed)
         }
     }
 
     func members() -> Void {
+        manageStep?(.openMembers)
         pushViewController(PeerInfoNavigationHooks.shared.makeChannelMembersController(context, peerId))
     }
     
     func admins() -> Void {
+        manageStep?(.openAdmins)
         pushViewController(ChannelAdminsViewController(context, peerId: peerId))
     }
     func updateChannelPhoto(_ custom: NSImage?, control: Control?) {
@@ -367,6 +373,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updateVideo(_ signal:Signal<VideoAvatarGeneratorState, NoError>) -> Void {
+        manageStep?(.changePhoto)
         
         let updateState:((ChannelInfoState)->ChannelInfoState)->Void = { [weak self] f in
             self?.updateState(f)
@@ -440,6 +447,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updatePhoto(_ path:String) -> Void {
+        manageStep?(.changePhoto)
         
         let updateState:((ChannelInfoState)->ChannelInfoState)->Void = { [weak self] f in
             self?.updateState(f)
@@ -497,11 +505,19 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func stats(_ datacenterId: Int32, monetization: Bool, stars: Bool) {
+        let origin = captureAnalyticsContext()
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         if datacenterId == 0 {
             let controller = ChannelBoostStatsController(context: context, peerId: peerId)
+            if let current = controller.analyticsContext, current.isExcluded || current.scope?.isValid != true {
+                controller.analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: current)
+            } else {
+                controller.analyticsContext = origin
+            }
             self.pushViewController(controller)
         } else {
-            self.pushViewController(ChannelStatsSegmentController(context, peerId: peerId, isChannel: true, monetization: monetization, stars: stars && !monetization))
+            self.pushViewController(ChannelStatsSegmentController(context, peerId: peerId, isChannel: true, monetization: monetization, stars: stars && !monetization, analyticsContext: origin))
         }
     }
     
@@ -570,6 +586,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updateEditingDescriptionText(_ text:String) -> Void {
+        manageStep?(.changeDescription)
         updateState { state in
             if let editingState = state.editingState {
                 return state.withUpdatedEditingState(editingState.withUpdatedEditingDescriptionText(text))
@@ -579,6 +596,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updateEditingName(_ name:String) -> Void {
+        manageStep?(.changeTitle)
         updateState { state in
             if let editingState = state.editingState {
                 return state.withUpdatedEditingState(ChannelInfoEditingState(editingName: name, editingDescriptionText: editingState.editingDescriptionText))
@@ -599,7 +617,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
 }
 
 enum ChannelInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
-    case info(sectionId: ChannelInfoSection, peerView: PeerView, editable:Bool, updatingPhotoState:PeerInfoUpdatingPhotoState?, stories: PeerExpiringStoryListContext.State?, viewType: GeneralViewType)
+    case info(sectionId: ChannelInfoSection, peerView: PeerView, editable:Bool, updatingPhotoState:PeerInfoUpdatingPhotoState?, stories: PeerExpiringStoryListContext.State?, mutedByDefault: Bool, viewType: GeneralViewType)
     case scam(sectionId: ChannelInfoSection, title: String, text: String, viewType: GeneralViewType)
     case about(sectionId: ChannelInfoSection, text: String, viewType: GeneralViewType)
     case userName(sectionId: ChannelInfoSection, value: [UserInfoAddress], viewType: GeneralViewType)
@@ -633,7 +651,7 @@ enum ChannelInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
     
     func withUpdatedViewType(_ viewType: GeneralViewType) -> ChannelInfoEntry {
         switch self {
-        case let .info(sectionId, peerView, editable, updatingPhotoState, stories, _): return .info(sectionId: sectionId, peerView: peerView, editable: editable, updatingPhotoState: updatingPhotoState, stories: stories, viewType: viewType)
+        case let .info(sectionId, peerView, editable, updatingPhotoState, stories, mutedByDefault, _): return .info(sectionId: sectionId, peerView: peerView, editable: editable, updatingPhotoState: updatingPhotoState, stories: stories, mutedByDefault: mutedByDefault, viewType: viewType)
         case let .scam(sectionId, title, text, _): return .scam(sectionId: sectionId, title: title, text: text, viewType: viewType)
         case let .about(sectionId, text, _): return .about(sectionId: sectionId, text: text, viewType: viewType)
         case let .userName(sectionId, value, _): return .userName(sectionId: sectionId, value: value, viewType: viewType)
@@ -674,9 +692,9 @@ enum ChannelInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
             return false
         }
         switch self {
-        case let .info(sectionId, lhsPeerView, editable, updatingPhotoState, stories, viewType):
+        case let .info(sectionId, lhsPeerView, editable, updatingPhotoState, stories, mutedByDefault, viewType):
             switch entry {
-            case .info(sectionId, let rhsPeerView, editable, updatingPhotoState, stories, viewType):
+            case .info(sectionId, let rhsPeerView, editable, updatingPhotoState, stories, mutedByDefault, viewType):
                 
                 let lhsPeer = peerViewMainPeer(lhsPeerView)
                 let lhsCachedData = lhsPeerView.cachedData
@@ -962,7 +980,7 @@ enum ChannelInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
     
     fileprivate var sectionId: Int {
         switch self {
-        case let .info(sectionId, _, _, _, _, _):
+        case let .info(sectionId, _, _, _, _, _, _):
             return sectionId.rawValue
         case let .setTitle(sectionId, _, _):
             return sectionId.rawValue
@@ -1025,7 +1043,7 @@ enum ChannelInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
     
     private var sortIndex: Int {
         switch self {
-        case let .info(sectionId, _, _, _, _, _):
+        case let .info(sectionId, _, _, _, _, _, _):
             return (sectionId.rawValue * 1000) + stableIndex
         case let .setTitle(sectionId, _, _):
             return (sectionId.rawValue * 1000) + stableIndex
@@ -1096,8 +1114,8 @@ enum ChannelInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
     func item<C: AccountContextProtocol>(initialSize:NSSize, arguments:PeerInfoArguments<C>) -> TableRowItem {
         let arguments = arguments as! ChannelInfoArguments<Context>
         switch self {
-        case let .info(_, peerView, editable, updatingPhotoState, stories, viewType):
-            return PeerInfoHeadItem(initialSize, stableId: stableId.hashValue, context: arguments.context, arguments: arguments, peerView: peerView, threadData: nil, threadId: nil, stories: stories, viewType: viewType, editing: editable, updatingPhotoState: updatingPhotoState, updatePhoto: arguments.updateChannelPhoto, giftsContext: arguments.getStarGiftsContext?())
+        case let .info(_, peerView, editable, updatingPhotoState, stories, mutedByDefault, viewType):
+            return PeerInfoHeadItem(initialSize, stableId: stableId.hashValue, context: arguments.context, arguments: arguments, peerView: peerView, threadData: nil, threadId: nil, stories: stories, viewType: viewType, editing: editable, updatingPhotoState: updatingPhotoState, updatePhoto: arguments.updateChannelPhoto, giftsContext: arguments.getStarGiftsContext?(), mutedByDefault: mutedByDefault)
         case let .scam(_, title, text, viewType):
             return TextAndLabelItem(initialSize, stableId:stableId.hashValue, label: title, copyMenuText: strings().textCopy, labelColor: theme.colors.redUI, text: text, context: arguments.context, viewType: viewType, detectLinks:false)
         case let .about(_, text, viewType):
@@ -1250,7 +1268,7 @@ enum ChannelInfoSection : Int {
     case media = 9
 }
 
-func channelInfoEntries<Context: AccountContextProtocol>(view: PeerView, arguments:PeerInfoArguments<Context>, mediaTabsData: PeerMediaTabsData, inviteLinksCount: Int32, joinRequestsCount: Int32, availableReactions: AvailableReactions?, stories: PeerExpiringStoryListContext.State?, revenueState: StarsRevenueStatsContextState?, tonRevenueState: StarsRevenueStatsContextState?) -> [PeerInfoEntry] {
+func channelInfoEntries<Context: AccountContextProtocol>(view: PeerView, arguments:PeerInfoArguments<Context>, mediaTabsData: PeerMediaTabsData, inviteLinksCount: Int32, joinRequestsCount: Int32, availableReactions: AvailableReactions?, stories: PeerExpiringStoryListContext.State?, revenueState: StarsRevenueStatsContextState?, tonRevenueState: StarsRevenueStatsContextState?, mutedByDefault: Bool) -> [PeerInfoEntry] {
     
     let arguments = arguments as! ChannelInfoArguments<Context>
     var state:ChannelInfoState {
@@ -1258,7 +1276,7 @@ func channelInfoEntries<Context: AccountContextProtocol>(view: PeerView, argumen
     }
     var entries: [ChannelInfoEntry<Context>] = []
     
-    entries.append(.info(sectionId: .header, peerView: view, editable: state.editingState != nil, updatingPhotoState: state.updatingPhotoState, stories: stories, viewType: .singleItem))
+    entries.append(.info(sectionId: .header, peerView: view, editable: state.editingState != nil, updatingPhotoState: state.updatingPhotoState, stories: stories, mutedByDefault: mutedByDefault, viewType: .singleItem))
 
     
     var infoBlock:[ChannelInfoEntry<Context>] = []

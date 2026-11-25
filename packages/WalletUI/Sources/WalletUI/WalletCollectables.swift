@@ -63,27 +63,53 @@ enum WalletCollectableImages {
         return WalletCollectibleArtworks.shared.current(id).art
     }
 
-    static func cut(_ id: String) -> CGImage? {
-        let key = "cut_\(id)"
-        if let cached = rendered[key] {
-            return cached
-        }
-        guard let art = art(id) else {
-            return nil
-        }
+    private static func makeCut(_ art: CGImage) -> CGImage? {
         let source = CIImage(cgImage: art)
-        let mask = source
+        let solid = source.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: 20), "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: -9.5)])
+        let mask = solid
             .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: CGFloat(art.width) * 15 / 512])
             .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: CGFloat(art.width) / 512])
             .cropped(to: source.extent)
         let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1)).cropped(to: source.extent)
         let clear = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)).cropped(to: source.extent)
         let outline = white.applyingFilter("CIBlendWithAlphaMask", parameters: [kCIInputBackgroundImageKey: clear, kCIInputMaskImageKey: mask])
-        guard let space = CGColorSpace(name: CGColorSpace.sRGB), let image = ciContext.createCGImage(outline, from: source.extent, format: .RGBA8, colorSpace: space) else {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB) else {
+            return nil
+        }
+        return ciContext.createCGImage(outline, from: source.extent, format: .RGBA8, colorSpace: space)
+    }
+
+    static func cut(_ id: String) -> CGImage? {
+        let key = "cut_\(id)"
+        if let cached = rendered[key] {
+            return cached
+        }
+        guard let art = art(id), let image = makeCut(art) else {
             return nil
         }
         rendered[key] = image
         return image
+    }
+
+    static func animatedSticker(frame: CGImage, side: Int) -> CGImage? {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB), let artContext = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            return nil
+        }
+        let box = CGFloat(side) * (1 - WalletCollectibleArtworks.artInset * 2)
+        let scale = min(box / CGFloat(frame.width), box / CGFloat(frame.height))
+        let width = CGFloat(frame.width) * scale
+        let height = CGFloat(frame.height) * scale
+        artContext.interpolationQuality = .high
+        artContext.draw(frame, in: CGRect(x: (CGFloat(side) - width) / 2, y: (CGFloat(side) - height) / 2, width: width, height: height))
+        guard let art = artContext.makeImage(), let cut = makeCut(art), let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            return nil
+        }
+        let rect = CGRect(x: 0, y: 0, width: side, height: side)
+        context.setShadow(offset: CGSize(width: 0, height: -rect.width * 0.008), blur: rect.width * 0.018, color: NSColor.black.withAlphaComponent(0.34).cgColor)
+        context.draw(cut, in: rect)
+        context.setShadow(offset: .zero, blur: 0, color: nil)
+        context.draw(art, in: rect)
+        return context.makeImage()
     }
 
     static func base(_ id: String) -> CGImage? {
@@ -1152,7 +1178,9 @@ final class WalletCollectablesStage {
             let local = CGPoint(x: (pose.center.x - rect.minX) / k, y: (pose.center.y - rect.minY) / k)
             let nearCard = card.bounds.insetBy(dx: -30, dy: -30).contains(local)
             let solver = self.solver(excluding: drag.id)
-            let spot = tossed ? solver?.spread(aim: local, scale: scale) : (nearCard ? solver?.drop(near: local, scale: scale) : nil)
+            let surface = card.stickerSurfaceSize
+            let dropped = WalletStickerPlacement.Spot(center: CGPoint(x: min(surface.width, max(0, local.x)), y: min(surface.height, max(0, local.y))), scale: scale)
+            let spot = tossed ? solver?.spread(aim: local, scale: scale) : (nearCard ? dropped : nil)
             if let spot {
                 place(drag.gift, from: pose, spot: spot, angle: WalletCollectablesStage.wrapped(pose.angle), thrown: tossed)
                 return
@@ -1647,6 +1675,10 @@ final class WalletCardStickerLayer: SimpleLayer {
         contents = image
         glossMask.contents = WalletCollectableImages.cut(id)
         return true
+    }
+
+    func setAnimating(_ animating: Bool) {
+        gloss.isHidden = animating
     }
 
     func layoutGloss() {

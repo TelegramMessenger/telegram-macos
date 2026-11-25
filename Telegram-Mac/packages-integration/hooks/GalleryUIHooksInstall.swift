@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -172,10 +173,12 @@ func installGalleryUIHooks() {
             controller?.chatInteraction.sendMedia([MediaSenderContainer(path: path, isFile: false)])
         }
     })
-    hooks.showShareWithContext = { context, message, messages, window in
+    hooks.showShareWithContext = { context, message, messages, window, analyticsContext in
         guard let context = context as? AccountContext else { return }
+        let journey = AnalyticsShareJourney(context: analyticsContext, entry: messages == nil ? .gallerySelection : .galleryGroup, source: .mediaViewer)
         let object = ShareMessageObject(context, message, messages ?? [])
-        let controller = ShareModalController(object)
+        let controller = ShareModalController(object, analyticsContext: analyticsContext)
+        controller.setAnalyticsShareJourney(journey)
         showModal(with: controller, for: window)
     }
     GalleryHooks.install(hooks)

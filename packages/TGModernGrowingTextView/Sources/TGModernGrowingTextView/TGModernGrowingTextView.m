@@ -1175,6 +1175,13 @@ NSString *const TGEmojiHolderAttributeName = @"TGEmojiHolderAttributeName";
     return identifiers;
 }
     
+- (BOOL)textView:(NSTextView *)textView shouldChangeTextInRange:(NSRange)affectedCharRange replacementString:(NSString *)replacementString {
+    if (replacementString && [self.delegate respondsToSelector:@selector(textViewAllowsReplacementText:)]) {
+        return [self.delegate textViewAllowsReplacementText:replacementString];
+    }
+    return YES;
+}
+
 - (void)textDidChange:(NSNotification *)notification {
     int limit = self.delegate == nil ? INT32_MAX : [self.delegate maxCharactersLimit: self];
     

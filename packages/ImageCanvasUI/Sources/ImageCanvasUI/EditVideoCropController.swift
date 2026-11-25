@@ -16,16 +16,13 @@ final class EditVideoCropView: View {
     var imageSize: NSSize = NSMakeSize(16, 9)
 
     required init(frame frameRect: NSRect) {
-        self.rotate = makeGlassIconButton(NSImage(resource: .iconEditVideoRotate).precomposed(.white))
-        self.mirror = makeGlassIconButton(NSImage(resource: .iconEditVideoFlip).precomposed(.white))
-        self.aspect = makeGlassIconButton(NSImage(resource: .iconEditVideoAspect).precomposed(.white))
+        self.rotate = makeGlassIconButton(NSImage(resource: .iconEditVideoRotate).precomposed(.white), label: strings().voiceOverCommonRotate)
+        self.mirror = makeGlassIconButton(NSImage(resource: .iconEditVideoFlip).precomposed(.white), label: strings().voiceOverCommonFlip)
+        self.aspect = makeGlassIconButton(NSImage(resource: .iconEditVideoAspect).precomposed(.white), label: strings().voiceOverCommonAspectRatio)
         super.init(frame: frameRect)
         imageView.isAccessibilityDecorative = true
         addSubview(imageView)
         imageView.addSubview(selection)
-        rotate.setAccessibilityLabel(strings().voiceOverCommonRotate)
-        mirror.setAccessibilityLabel(strings().voiceOverCommonFlip)
-        aspect.setAccessibilityLabel(strings().voiceOverCommonAspectRatio)
         rotate.appTooltip = "⌘R"
         for view in [cancel, done, rotate, mirror, aspect] as [NSView] {
             addSubview(view)

@@ -21,6 +21,7 @@ import LocalAnimations
 import SelectPeersUI
 import StarsUI
 import InlineStickerLayer
+import AppAnalytics
 
 extension PrepaidGiveaway {
     var purpose: LaunchGiveawayPurpose {
@@ -1217,6 +1218,7 @@ public func GiveawayModalController(context: any AccountContextProtocol, peerId:
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().giveawayTitle)
+    controller.analyticsScreen = .boostsGiveawayCreate
     
     controller.didLoad = { controller, _ in
         controller.genericView.layer?.masksToBounds = false

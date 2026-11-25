@@ -15,6 +15,7 @@ import AlertsUI
 import InAppSettings
 import LocalAnimations
 import AvatarUI
+import AppAnalytics
 
 
 private final class Arguments {
@@ -158,6 +159,7 @@ public func AutoremoveMessagesController(context: any AccountContextProtocol, pe
     }
 
     let controller = InputDataController(dataSignal: signal, title: onlyDelete ? strings().autoremoveMessagesTitleDeleteOnly : strings().autoremoveMessagesTitle, hasDone: false)
+    controller.analyticsScreen = .chatAutoDelete
 
 
     controller.onDeinit = {

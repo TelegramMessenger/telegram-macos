@@ -232,7 +232,7 @@ private final class PremiumBoardingView : View {
                         
             container.setFrameSize(layout.layoutSize)
             
-            layer?.cornerRadius = 10
+            layer?.cornerRadius = 20
             
             let size = NSMakeSize(container.frame.width + 100, 40)
 

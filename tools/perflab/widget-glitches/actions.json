@@ -1,0 +1,560 @@
+[
+  {
+    "contains": "SPRINT 42 · DAY 6 OF 10",
+    "actions": [
+      {
+        "data-a": "f",
+        "data-v": "1"
+      },
+      {
+        "data-a": "f",
+        "data-v": "2"
+      },
+      {
+        "data-a": "f",
+        "data-v": "0"
+      },
+      {
+        "data-a": "c",
+        "data-v": "3"
+      },
+      {
+        "data-a": "f",
+        "data-v": "1"
+      },
+      {
+        "data-a": "f",
+        "data-v": "0"
+      }
+    ]
+  },
+  {
+    "contains": "🧳 Packing list",
+    "actions": [
+      {
+        "data-cat": "docs"
+      },
+      {
+        "data-cat": "clothes"
+      },
+      {
+        "data-cat": "gear"
+      },
+      {
+        "data-cat": "all"
+      },
+      {
+        "data-id": "1"
+      },
+      {
+        "data-id": "1"
+      }
+    ]
+  },
+  {
+    "contains": "Julia K.|af52de",
+    "actions": [
+      {
+        "data-a": "s",
+        "data-v": "1"
+      },
+      {
+        "data-a": "s",
+        "data-v": "2"
+      },
+      {
+        "data-a": "s",
+        "data-v": "0"
+      },
+      {
+        "data-a": "f",
+        "data-v": "5"
+      },
+      {
+        "data-a": "f",
+        "data-v": "5"
+      },
+      {
+        "data-a": "m",
+        "data-v": "0"
+      },
+      {
+        "data-a": "m",
+        "data-v": "0"
+      },
+      {
+        "data-a": "p"
+      }
+    ]
+  },
+  {
+    "contains": "Cheat sheet for the team",
+    "actions": [
+      {
+        "data-action": "tab",
+        "data-value": "1"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "2"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "0"
+      },
+      {
+        "data-action": "filter",
+        "data-value": "⌘"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "3"
+      },
+      {
+        "data-action": "answer",
+        "data-value": "0"
+      },
+      {
+        "data-action": "next"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "0"
+      }
+    ]
+  },
+  {
+    "contains": "Survival Portuguese",
+    "actions": [
+      {
+        "data-cat": "1"
+      },
+      {
+        "data-cat": "2"
+      },
+      {
+        "data-cat": "3"
+      },
+      {
+        "data-cat": "0"
+      },
+      {
+        "data-row": "0"
+      },
+      {
+        "data-row": "0"
+      },
+      {
+        "id": "quiz"
+      },
+      {
+        "id": "xx"
+      }
+    ]
+  },
+  {
+    "contains": "Pull to play",
+    "actions": [
+      {
+        "data-action": "pay"
+      },
+      {
+        "data-action": "pay"
+      },
+      {
+        "data-action": "bet",
+        "data-value": "1"
+      },
+      {
+        "data-action": "bet",
+        "data-value": "-1"
+      },
+      {
+        "data-action": "spin"
+      },
+      {
+        "data-action": "pay"
+      },
+      {
+        "data-action": "pay"
+      }
+    ]
+  },
+  {
+    "contains": "artist:\"The Box Model\"",
+    "actions": [
+      {
+        "data-action": "queue"
+      },
+      {
+        "data-action": "queue"
+      },
+      {
+        "data-action": "next"
+      },
+      {
+        "data-action": "prev"
+      },
+      {
+        "data-action": "play"
+      },
+      {
+        "data-action": "play"
+      },
+      {
+        "data-action": "shuffle"
+      },
+      {
+        "data-action": "repeat"
+      }
+    ]
+  },
+  {
+    "contains": "🔢 Sudoku",
+    "actions": [
+      {
+        "id": "nw"
+      },
+      {
+        "id": "ck"
+      },
+      {
+        "id": "nw"
+      },
+      {
+        "id": "sv"
+      },
+      {
+        "id": "nw"
+      },
+      {
+        "id": "ck"
+      },
+      {
+        "id": "nw"
+      },
+      {
+        "id": "ck"
+      }
+    ]
+  },
+  {
+    "contains": "Tic-tac-toe",
+    "actions": [
+      {
+        "data-level": "easy"
+      },
+      {
+        "data-first": "pixel"
+      },
+      {
+        "data-first": "you"
+      },
+      {
+        "data-level": "hard"
+      },
+      {
+        "data-i": "4"
+      },
+      {
+        "id": "restart"
+      },
+      {
+        "data-i": "0"
+      },
+      {
+        "id": "hintBtn"
+      }
+    ]
+  },
+  {
+    "contains": "Aa Type specimen",
+    "actions": [
+      {
+        "data-action": "tab",
+        "data-value": "1"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "2"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "0"
+      },
+      {
+        "data-action": "fam",
+        "data-value": "1"
+      },
+      {
+        "data-action": "italic"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "1"
+      },
+      {
+        "data-action": "pick",
+        "data-value": "2"
+      },
+      {
+        "data-action": "tab",
+        "data-value": "2"
+      }
+    ]
+  },
+  {
+    "contains": "Offsite location",
+    "actions": [
+      {
+        "data-t": "v"
+      },
+      {
+        "data-t": "r"
+      },
+      {
+        "id": "sort"
+      },
+      {
+        "data-t": "v"
+      },
+      {
+        "data-t": "r"
+      },
+      {
+        "id": "close"
+      },
+      {
+        "id": "close"
+      },
+      {
+        "id": "reset"
+      }
+    ]
+  },
+  {
+    "contains": "Whack-a-mole",
+    "actions": [
+      {
+        "data-level": "Easy"
+      },
+      {
+        "data-level": "Hard"
+      },
+      {
+        "data-level": "Normal"
+      },
+      {
+        "id": "st"
+      },
+      {
+        "id": "sp"
+      }
+    ]
+  },
+  {
+    "contains": "const L={a:-1}",
+    "actions": [
+      {
+        "id": "right"
+      },
+      {
+        "id": "left"
+      },
+      {
+        "id": "left"
+      },
+      {
+        "id": "right"
+      },
+      {
+        "data-view": "chart"
+      },
+      {
+        "data-view": "laps"
+      },
+      {
+        "data-view": "chart"
+      },
+      {
+        "id": "left"
+      }
+    ]
+  },
+  {
+    "contains": "Retention by cohort",
+    "actions": [
+      {
+        "data-act": "mode",
+        "data-value": "1"
+      },
+      {
+        "data-act": "units"
+      },
+      {
+        "data-act": "row",
+        "data-value": "0"
+      },
+      {
+        "data-act": "close"
+      },
+      {
+        "data-act": "mode",
+        "data-value": "0"
+      },
+      {
+        "data-act": "units"
+      },
+      {
+        "data-act": "row",
+        "data-value": "1"
+      },
+      {
+        "data-act": "close"
+      }
+    ]
+  },
+  {
+    "contains": "const sweep = { a: -1 };",
+    "actions": [
+      {
+        "id": "right"
+      },
+      {
+        "id": "left"
+      },
+      {
+        "id": "left"
+      },
+      {
+        "id": "right"
+      },
+      {
+        "data-view": "chart"
+      },
+      {
+        "data-view": "laps"
+      },
+      {
+        "data-view": "chart"
+      },
+      {
+        "id": "left"
+      }
+    ]
+  },
+  {
+    "contains": "Revenue by region",
+    "actions": [
+      {
+        "data-a": "expand",
+        "data-v": "0"
+      },
+      {
+        "data-a": "expand",
+        "data-v": "1"
+      },
+      {
+        "data-a": "expand",
+        "data-v": "1"
+      },
+      {
+        "data-a": "sort"
+      },
+      {
+        "data-a": "sort"
+      },
+      {
+        "data-a": "cell",
+        "data-v": "0:1"
+      },
+      {
+        "data-a": "clear"
+      },
+      {
+        "data-a": "reset"
+      }
+    ]
+  },
+  {
+    "contains": "Nerd quiz: rendering edition",
+    "actions": [
+      {
+        "id": "restart"
+      },
+      {
+        "data-j": "1"
+      },
+      {
+        "id": "next"
+      },
+      {
+        "data-j": "2"
+      },
+      {
+        "id": "next"
+      },
+      {
+        "data-j": "3"
+      },
+      {
+        "id": "next"
+      },
+      {
+        "id": "restart"
+      }
+    ]
+  },
+  {
+    "contains": "Sunny, light breeze",
+    "actions": [
+      {
+        "data-day": "3"
+      },
+      {
+        "data-day": "3"
+      },
+      {
+        "data-day": "3"
+      },
+      {
+        "data-metric": "rain"
+      },
+      {
+        "data-metric": "wind"
+      },
+      {
+        "data-metric": "temp"
+      },
+      {
+        "data-unit": "F"
+      },
+      {
+        "data-unit": "C"
+      }
+    ]
+  },
+  {
+    "contains": "zsh",
+    "actions": [
+      {
+        "data-action": "rerun"
+      },
+      {
+        "data-action": "verbose"
+      },
+      {
+        "data-action": "speed"
+      },
+      {
+        "data-action": "skip"
+      },
+      {
+        "data-action": "clear"
+      },
+      {
+        "data-action": "rerun"
+      }
+    ]
+  }
+]

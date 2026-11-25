@@ -41,6 +41,7 @@ class DisplayLink
    init?(onQueue queue: DispatchQueue = DispatchQueue.main)
    {
        source = DispatchSource.makeUserDataAddSource(queue: queue)
+       source.activate()
        
        var timerRef : CVDisplayLink? = nil
        
@@ -91,7 +92,6 @@ class DisplayLink
        guard !running else { return }
        
        CVDisplayLinkStart(timer)
-       source.resume()
    }
    
    func cancel()
@@ -108,6 +108,7 @@ class DisplayLink
        {
            cancel()
        }
+       source.cancel()
    }
 }
 

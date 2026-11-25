@@ -1108,10 +1108,30 @@ public struct ThemePaletteSettings: Codable, Equatable {
     }
     
     
+    public func withUpdatedAccentColor(_ color: PaletteAccentColor) -> ThemePaletteSettings {
+        let clearPalette = self.palette.withoutAccentColor()
+        let palette = color.accent == clearPalette.basicAccent && color.messages?.isEmpty != false ? clearPalette : clearPalette.withAccentColor(color)
+        let preserveWallpaper = self.wallpaper.wallpaper != self.palette.wallpaper.wallpaper && (self.cloudTheme == nil || self.wallpaper.wallpaper != self.wallpaper.associated?.wallpaper)
+        var settings = self.withUpdatedPalette(palette).withUpdatedCloudTheme(nil)
+        let defaultTheme = DefaultTheme(local: palette.parent, cloud: nil)
+        if palette.isDark {
+            settings = settings.withUpdatedDefaultDark(defaultTheme)
+        } else {
+            settings = settings.withUpdatedDefaultDay(defaultTheme)
+        }
+        settings = settings.saveDefaultAccent(color: color).installDefaultWallpaper()
+        if preserveWallpaper {
+            settings = settings.updateWallpaper { _ in
+                ThemeWallpaper(wallpaper: self.wallpaper.wallpaper, associated: nil)
+            }.saveDefaultWallpaper()
+        }
+        return settings.withSavedAssociatedTheme()
+    }
+
     public func installDefaultAccent() -> ThemePaletteSettings {
         let accent: LocalAccentColor? = self.accents.first(where: { $0.name == self.palette.parent && $0.cloud?.id == self.cloudTheme?.id })
         var palette: ColorPalette = self.palette.withoutAccentColor()
-        if let accent = accent {
+        if let accent = accent, accent.color.accent != palette.basicAccent || accent.color.messages?.isEmpty == false {
              palette = palette.withAccentColor(accent.color)
         }
         return ThemePaletteSettings(palette: palette, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, defaultDark: self.defaultDark, defaultDay: self.defaultDay, defaultIsDark: self.defaultIsDark, wallpapers: self.wallpapers, accents: self.accents, cloudTheme: self.cloudTheme, associated: self.associated, legacyMenu: self.legacyMenu)

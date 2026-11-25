@@ -108,11 +108,25 @@ extension DisplayLinkRateTests {
 
     func testMixedRatesKeepTheirOwnCadence() throws {
         try XCTSkipIf(self.refreshRate < 50, "needs a display faster than the links")
-        let result = self.measure([.fps(25), .fps(30), .fps(60)])
-        XCTAssertEqual(Double(result.ticks[0]), self.refreshRate / Double(Int(ceil(self.refreshRate / 25.0 * 0.95 - 1e-3))), accuracy: 3)
-        XCTAssertEqual(Double(result.ticks[1]), self.refreshRate / Double(Int(ceil(self.refreshRate / 30.0 * 0.95 - 1e-3))), accuracy: 3)
-        XCTAssertEqual(Double(result.ticks[2]), min(60, self.refreshRate), accuracy: 6)
-        XCTAssertLessThan(Double(result.deliveries), self.refreshRate * 0.7)
+        let rates = [25, 30, 60]
+        let result = self.measure(rates.map { .fps($0) })
+        let frameIntervals = rates.map { max(1, Int(ceil(self.refreshRate / Double($0) * 0.95 - 1e-3))) }
+        for index in rates.indices {
+            XCTAssertEqual(Double(result.ticks[index]), self.refreshRate / Double(frameIntervals[index]), accuracy: index == 2 ? 6 : 3)
+        }
+        let cycle = frameIntervals.reduce(1) { cycle, interval in
+            var a = cycle
+            var b = interval
+            while b != 0 {
+                (a, b) = (b, a % b)
+            }
+            return cycle / a * interval
+        }
+        let dueFrames = (1 ... cycle).filter { frame in
+            frameIntervals.contains { frame.isMultiple(of: $0) }
+        }.count
+        let expectedDeliveries = self.refreshRate * Double(dueFrames) / Double(cycle)
+        XCTAssertEqual(Double(result.deliveries), expectedDeliveries, accuracy: 6)
     }
 
     func testMaxLinkStillGetsEveryFrame() {
