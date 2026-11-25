@@ -1342,6 +1342,9 @@ public class ChatRowItem: TableRowItem {
         if threadId == message.threadId && Int64(attribute.messageId.id) == threadId {
             return true
         }
+        if !attribute.isQuote, let action = message.associatedMessages[attribute.messageId]?.media.first as? TelegramMediaAction, case .topicCreated = action.action {
+            return true
+        }
         return message.media.first is TelegramMediaGiveawayResults
     }
 
