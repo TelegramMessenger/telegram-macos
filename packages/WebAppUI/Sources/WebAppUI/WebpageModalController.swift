@@ -1467,7 +1467,9 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
         }
         let biometrySignal = context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.BotBiometricsState(id: botPeer.id)) |> deliverOnMainQueue
         biometryDisposable = biometrySignal.start(next: { [weak self] result in
-            self?.biometryState = result
+            if let result {
+                self?.biometryState = result
+            }
         })
         
         let signal = statePromise.get() |> deliverOnMainQueue
